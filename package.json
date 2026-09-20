@@ -1,0 +1,43 @@
+{
+  "name": "mjs-tool-skeleton",
+  "version": "0.1.0",
+  "description": "A skeleton for single-file Node CLI tools that are usable both by a person at a terminal and unattended by an agent, from one set of item objects: --brief / --json / --quiet output modes, a dry-run mutation gate, stable exit codes, and a scaffolder.",
+  "type": "module",
+  "bin": {
+    "new-tool": "bin/new-tool.mjs"
+  },
+  "files": [
+    "bin/new-tool.mjs",
+    "skeleton/tool.mjs",
+    "skeleton/tool.test.mjs",
+    "AGENT-USAGE.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "cli",
+    "skeleton",
+    "template",
+    "scaffold",
+    "agent",
+    "esm",
+    "single-file",
+    "zero-dependency"
+  ],
+  "author": "Danniel T. Gaidula <dan@iceboxind.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dgaidula/mjs-tool-skeleton.git"
+  },
+  "homepage": "https://github.com/dgaidula/mjs-tool-skeleton#readme",
+  "bugs": {
+    "url": "https://github.com/dgaidula/mjs-tool-skeleton/issues"
+  }
+}
