@@ -53,12 +53,14 @@ The **`--brief` line** is a verdict glyph, a fixed-width verdict word, a
 summary, and the item name — plus a parenthesised reason **whenever the verdict
 is not `ok`**. Refusals, warnings, and skips are never collapsed or dropped:
 
+`apply report.txt notes.txt assets gone.txt --brief` (a dry run):
+
 ```
-✓ ok     file, 11 B                 report.txt
-⚠ warn   file, 0 B                  notes.txt  (file is empty (0 bytes))
-• skip   is a directory             assets  (apply targets files, not directories)
-⊘ refuse no such path               gone.txt  (path does not exist)
-summary: ok=1 warn=1 skip=1 refuse=1 fail=0
+✓ ok     would touch mtime                      report.txt
+⚠ warn   would touch mtime                      notes.txt  (file is empty (0 bytes))
+• skip   is a directory                        assets  (apply targets files, not directories)
+⊘ refuse no such path                          gone.txt  (path does not exist)
+summary: ok=1 warn=1 skip=1 refuse=1 fail=0 (dry run: pass --go to apply)
 ```
 
 The **`--json` schema** is stable:

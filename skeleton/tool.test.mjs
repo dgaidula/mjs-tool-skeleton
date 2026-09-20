@@ -14,7 +14,7 @@ function run(args, opts = {}) {
   return spawnSync('node', [TOOL_PATH, ...args], { encoding: 'utf8', timeout: 15000, ...opts });
 }
 function tmp() {
-  return mkdtempSync(path.join(tmpdir(), 'mjs-tool-skeleton-'));
+  return mkdtempSync(path.join(tmpdir(), 'tool-test-'));
 }
 
 test('brief: one line per item, refusal kept, reason parenthesised for non-ok', () => {

@@ -2,7 +2,14 @@
 
 ## Unreleased
 
-## 0.1.0 - 2026-09-20
+## 0.1.0 — 2026-09-20
+
+Review fixes before the first push (Fable 5.1 verify pass, same day): EOF at the
+confirmation prompt now declines (report rendered, exit 1) instead of exiting 0
+with no report after a partial batch; brief-mode summary column widened to fit
+the longest shipped summary; README sample block regenerated from a real dry
+run; generated tests no longer carry the skeleton's name in temp dirs.
+
 
 Initial release.
 

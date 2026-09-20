@@ -237,20 +237,27 @@ async function confirmMutation(item, { yes }) {
 
 // A y/N prompt whose text goes to stderr (never stdout), so --json stdout stays
 // pure and the prompt shows even when stdout is redirected.
+// EOF (Ctrl-D) at the prompt is a decline, not an abort: without the 'close'
+// handler the question promise never settles, the loop drains, and the tool
+// exits 0 with no report after any mutations already made (found in review,
+// 2026-09-20). Declining renders the report and exits 1 like any refusal.
 async function promptYesNo(question) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try {
-    const answer = (await rl.question(`${question} [y/N] `)).trim().toLowerCase();
-    return answer === 'y' || answer === 'yes';
-  } finally {
-    rl.close();
-  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; rl.close(); resolve(v); } };
+    rl.once('close', () => done(false));
+    rl.question(`${question} [y/N] `, (answer) => {
+      const a = String(answer).trim().toLowerCase();
+      done(a === 'y' || a === 'yes');
+    });
+  });
 }
 
 // ---- rendering (one item shape -> every mode) -------------------------------
 
 const VERDICT_WIDTH = 6; // longest verdict word ("refuse")
-const SUMMARY_WIDTH = 26; // brief-mode column alignment
+const SUMMARY_WIDTH = 38; // brief-mode column alignment (fits the longest shipped summary)
 
 function summarize(items) {
   const s = { ok: 0, warn: 0, skip: 0, refuse: 0, fail: 0 };
