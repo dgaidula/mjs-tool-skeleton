@@ -16,7 +16,7 @@ a person and by an agent from **one set of item objects**. Two moving parts:
   template, substituting the name.
 
 Zero dependencies, Node 20+ ESM, no Python. The convention it encodes is real
-and predates this repo (Dan’s private `rip-dvd-workflow`); this is the extracted
+and predates this repo (a private pipeline repo of Dan’s); this is the extracted
 public shape, not a copy of that code.
 
 ## The load-bearing invariants — do not regress
