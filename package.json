@@ -1,6 +1,6 @@
 {
   "name": "mjs-tool-skeleton",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A skeleton for single-file Node CLI tools that are usable both by a person at a terminal and unattended by an agent, from one set of item objects: --brief / --json / --quiet output modes, a dry-run mutation gate, stable exit codes, and a scaffolder.",
   "type": "module",
   "bin": {

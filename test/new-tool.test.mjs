@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, existsSync, writeFileSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  mkdtempSync, existsSync, writeFileSync, readFileSync, rmSync, statSync, mkdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const NEW_TOOL = new URL('../bin/new-tool.mjs', import.meta.url).pathname;
+const SKELETON = new URL('../skeleton/tool.mjs', import.meta.url).pathname;
 
 function run(args, opts = {}) {
   return spawnSync('node', [NEW_TOOL, ...args], { encoding: 'utf8', timeout: 20000, ...opts });
@@ -32,10 +35,11 @@ test('scaffolds the full file set and exits 0', () => {
     }
     // the tool file is executable
     assert.ok(statSync(path.join(root, 'my-widget.mjs')).mode & 0o100);
-    // brief mode: one line per created file plus a summary line
+    // brief mode: one line per created file, a summary line, a next: line
     const lines = r.stdout.trim().split('\n');
-    assert.equal(lines.length, 7);
-    assert.match(lines.at(-1), /^summary: ok=6 warn=0 skip=0 refuse=0 fail=0/);
+    assert.equal(lines.length, 8);
+    assert.match(lines.at(-2), /^summary: ok=6 warn=0 skip=0 refuse=0 fail=0/);
+    assert.match(lines.at(-1), /^next: done /);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -91,6 +95,10 @@ test('refuses to overwrite an existing directory (exit 1)', () => {
     assert.equal(data.summary.refuse, 1);
     assert.equal(data.items[0].verdict, 'refuse');
     assert.match(data.items[0].reason, /already exists/);
+    assert.equal(data.contract, 'mjs-tool/2');
+    assert.equal(data.effect, 'applied'); // no dry run: see the scaffolder's header
+    assert.equal(data.exit, 1);
+    assert.equal(data.next.action, 'done');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -106,9 +114,83 @@ test('usage errors exit 2', () => {
     const unknown = run(['ok-name', '--dir', dir, '--nope']);
     assert.equal(unknown.status, 2);
     assert.match(unknown.stderr, /--help/);
-    const both = run(['ok-name', '--dir', dir, '--brief', '--json']);
-    assert.equal(both.status, 2);
-    assert.match(both.stderr, /cannot be combined/);
+    for (const mode of ['--brief', '--quiet']) {
+      const both = run(['ok-name', '--dir', dir, mode, '--json']);
+      assert.equal(both.status, 2);
+      assert.match(both.stderr, /cannot be combined/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- contract mjs-tool/2: one runtime, frozen text output -------------------
+
+const OPEN = '// ---- mjs-tool runtime v2 (do not edit; replace wholesale) ----';
+const CLOSE = '// ---- end mjs-tool runtime v2 ----';
+
+// The fenced runtime block of a file, markers included; exactly one per file.
+function fenceOf(file) {
+  const src = readFileSync(file, 'utf8');
+  assert.equal(src.split(OPEN).length, 2, `${file}: one opening marker`);
+  assert.equal(src.split(CLOSE).length, 2, `${file}: one closing marker`);
+  return src.slice(src.indexOf(OPEN), src.indexOf(CLOSE) + CLOSE.length);
+}
+
+test('the runtime fence is byte-identical in the skeleton and the scaffolder', () => {
+  assert.equal(fenceOf(NEW_TOOL), fenceOf(SKELETON));
+});
+
+test('brief and human item and summary lines are byte-identical to 0.1.0 (README sample)', () => {
+  // Golden output captured from 0.1.0 (git show 69851df:skeleton/tool.mjs, run
+  // in a temp dir over these files). v2 may only add the final next: line.
+  const golden = {
+    brief: [
+      '✓ ok     would touch mtime                      report.txt',
+      '✓ ok     would touch mtime                      notes.txt',
+      '• skip   is a directory                         assets  (apply targets files, not directories)',
+      '⊘ refuse no such path                           gone.txt  (path does not exist)',
+      'summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)',
+    ],
+    human: [
+      '✓ report.txt', '    would touch mtime',
+      '✓ notes.txt', '    would touch mtime',
+      '• assets', '    is a directory', '    skip: apply targets files, not directories',
+      '⊘ gone.txt', '    no such path', '    refuse: path does not exist',
+      '',
+      'summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)',
+    ],
+  };
+  const dir = tmp();
+  try {
+    writeFileSync(path.join(dir, 'report.txt'), 'hello world');
+    writeFileSync(path.join(dir, 'notes.txt'), '');
+    mkdirSync(path.join(dir, 'assets'));
+    for (const [mode, flags] of [['brief', ['--brief']], ['human', []]]) {
+      const r = spawnSync('node', [SKELETON, 'apply', 'report.txt', 'notes.txt', 'assets', 'gone.txt', ...flags], {
+        cwd: dir, encoding: 'utf8', timeout: 15000,
+      });
+      const lines = r.stdout.split('\n');
+      assert.equal(lines.pop(), ''); // output ends with a newline
+      assert.match(lines.pop(), /^next: /); // the one v2 addition, last
+      assert.deepEqual(lines, golden[mode], mode);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a scaffolded tool passes its own shipped tests and carries the same fence', () => {
+  const dir = tmp();
+  try {
+    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
+    const root = path.join(dir, 'my-widget');
+    assert.equal(fenceOf(path.join(root, 'my-widget.mjs')), fenceOf(SKELETON));
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT; // run it as its own top-level suite, not as our child
+    const t = spawnSync('node', ['--test'], { cwd: root, env, encoding: 'utf8', timeout: 120000 });
+    assert.equal(t.status, 0, t.stdout + t.stderr);
+    assert.match(t.stdout, /# fail 0|ℹ fail 0/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
