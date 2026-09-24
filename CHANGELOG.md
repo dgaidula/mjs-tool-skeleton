@@ -2,12 +2,66 @@
 
 ## Unreleased
 
-## 0.2.0 — 2026-09-23
+## 0.2.0 — 2026-09-24
 
 Contract `mjs-tool/2`: a next-action layer, an explicit effect, and one shared
 runtime block. Additive for `--json` consumers; the text modes gain one line.
+Built on 2026-09-23, gated the same night, and frozen on 2026-09-24 after the
+pilot adoption and the round below.
 
-Gate fixes before the first push (Opus 5.5 gate pass, 2026-09-24):
+The final round before the freeze (Dan’s decisions on the pilot, 2026-09-24):
+
+- **A clean dry run advises `ask`**, a person’s call, with the `--go` command
+  as its `argv`. It advises `run` only for a command the tool lists in
+  `AUTO_RUN_COMMANDS`, a new hook above the fence, empty by default: auto-run
+  is an opt-in, command by command, and a tool may fill it from its own config.
+
+- **`who` is derived from `action`**: `agent` for `run`, `wait` and `done`,
+  `human` for `ask` and `stop`. `nextStep()` takes no `who` (or `cwd`) and
+  throws if handed one; the guard rejects any mismatch.
+
+- **`argv` starts with `[process.execPath, <script as invoked>]`**, so it runs
+  without the executable bit. `run` and `wait` must re-invoke this tool (the
+  guard checks both head tokens); a handoff to another tool is `done`, with
+  the next step in the runbook. `wait` never carries `--go` or a mutating
+  command, and `done` and `stop` carry no `argv`.
+
+- **The `next:` line prints a command only where its reader may take it.**
+  `--brief` and `--quiet` print a bare `next: ask  (why)` and
+  `next: stop  (why)`; the default human mode shows an ask as
+  `next: your call: <command>  (why)`. `--json` keeps `argv`. Item and
+  summary lines are unchanged: still byte-identical to 0.1.0.
+
+- **`report()` ends the run.** It writes, then exits with the reported code
+  once stdout has flushed, so an open handle in a tool cannot hold the process
+  and a large report still arrives whole; a `main()` that returns without a
+  report exits the same way. An error thrown after the report is printed, but
+  keeps the report’s exit code.
+
+- **`cwd` is read once as the module loads** (`START_CWD`), so a run that
+  removes its own working directory still reports; one started in a removed
+  directory reports `$PWD`.
+
+- **`nextStep()` escapes and clips `why`** (each name to 80 characters, the
+  whole to 200, the “and N more” count kept) instead of the guard refusing it
+  after the work is done.
+
+- **The hooks are checked as the module loads**: `MUTATING_COMMANDS` and
+  `AUTO_RUN_COMMANDS` Sets, `EXTRA_OVERRIDE_FLAGS` an array of strings,
+  `nextAction` and `main` functions. A bad one exits 3 by name.
+
+- **Control characters**: the bidi embedding, override and isolate controls
+  (U+202A–202E, U+2066–2069) are escaped too; TAB now passes through. The guard
+  echoes an offending token escaped.
+
+- Docs: AGENT-USAGE gains the loop budgets (at most 6 `run` steps; `wait`
+  bounded by the runbook’s wall-clock time), “exit 0 does not mean go”, the
+  exit-2-or-3 halt, and the one-directional runbook rule. The README documents
+  compound command names, `done` at exit 1, `null` next, the `state` shape,
+  prefix-versus-exact override matching, `$'…'` quoting and old bash, the
+  `-n` alias, and which tests an adopting tool ports. Tests: 40 → 48.
+
+Gate fixes before the first push (Opus 5.5 gate pass, 2026-09-23):
 
 - **Large output no longer truncates.** `main()` sets `process.exitCode` from
   `report()` and returns instead of calling `process.exit()`, which dropped
@@ -26,9 +80,9 @@ Gate fixes before the first push (Opus 5.5 gate pass, 2026-09-24):
   stream with no `'error'` handler) exit 3, not 1. An error while the module
   loads still exits 1; the docs now say so.
 - **`next.argv[0]` is the script as invoked, made absolute**, and `next` gains a
-  sixth field, `cwd` (the absolute directory the run happened in) —
-  **provisional (pilot)**, pending the pilot adoption. `--go` goes before a
-  `--` terminator. A failed item advises `stop` in a read-only run too.
+  sixth field, `cwd` (the absolute directory the run happened in); the final
+  round, above, settled both. `--go` goes before a `--` terminator. A failed
+  item advises `stop` in a read-only run too.
 - **Override flags.** The guard blocks any `--yes*` or `--force*`,
   `--assume-yes`, `--allow`, `--allow=*`, `--allow-*`, `--i-am-*` (any
   case), `-y` or `-Y` alone or grouped, and the tool’s own
@@ -49,9 +103,10 @@ Gate fixes before the first push (Opus 5.5 gate pass, 2026-09-24):
 - **The next-action layer.** `nextAction()` is the single, pure source of
   `next` (`action` of `done`, `run`, `wait`, `ask`, or `stop`; `who`; `argv`
   as an array; `afterSeconds`; `why`), starting from the runtime’s
-  `defaultNextAction()`: a clean dry run advises `run` with `--go`, a dry run
-  with findings or a protected target advises `ask`, an applied run or an
-  `inspect` advises `done`, a failure advises `stop`. Every text mode ends
+  `defaultNextAction()`: a clean dry run advises `ask` (`run` with `--go`
+  since the final round only for an auto-run command), a dry run with findings
+  or a protected target advises `ask`, an applied run or an `inspect` advises
+  `done`, a failure advises `stop`. Every text mode ends
   with one `next:` line. It is a convention on the existing modes: there is no
   `--babysit` or `--next` flag.
 
