@@ -233,7 +233,10 @@ checks the hooks the tool declares above it (`MUTATING_COMMANDS` and
 `nextAction` and `main` as functions) and names any that is missing or
 misshapen, with exit `3`. `report()` ends the run: the process exits with
 the report’s code once stdout has flushed, so a large report is never cut off
-mid-pipe and an open handle cannot hold the run open.
+mid-pipe and an open handle cannot hold the run open. So call `report()` once,
+at the end of a run: a long-running loop or daemon must not call it per cycle,
+because the first call ends the process. Give such a tool a read-only `status`
+command that reports the loop’s state instead.
 
 **stdout vs stderr.** Data goes to stdout; every diagnostic, note, and prompt
 goes to stderr. In `--json` mode stdout is the JSON object and nothing else, so
@@ -358,7 +361,9 @@ in `AUTO_RUN_COMMANDS`; only then does `next` say `run … --go`. List a
 command there only when its owner has pre-approved applying it unattended.
 The set may come from the tool’s own config (a list of pre-approved
 procedures), built above the fence from the tool’s own code, since the
-fence’s names are not initialised until the fence runs.
+fence’s names are not initialised until the fence runs. Keep that config out
+of reach of the agent it governs: a pre-approval list an unattended agent can
+edit is no gate at all.
 
 **No advice at all.** A tool that takes the fence but not yet the next-action
 layer returns `null` from `nextAction()`: it still reports `--json`,
@@ -435,12 +440,17 @@ What the fence cannot do for you:
 
    Aliases are input only. Whatever `next.argv` says must run as written, and
    the default policy re-runs the caller’s own argv with `--go` added, which
-   the `--dry-run`/`--go` check above would refuse. So filter the argv that
-   `main()` hands to `nextAction()`:
+   the `--dry-run`/`--go` check above would refuse. So normalise the argv that
+   `main()` hands to `nextAction()`: drop the explicit-default flags and spell
+   every `--go` alias as `--go`. The `wait` check looks for `--go` and for
+   mutating command words, so an alias left in place (or a mutating default
+   with no verb) would be invisible to it:
 
    ```js
-   // --dry-run and any short form of it, like -n
-   const argv = process.argv.slice(2).filter((a) => a !== '--dry-run' && a !== '-n');
+   // drop --dry-run (and short forms like -n); spell every --go alias as --go
+   const argv = process.argv.slice(2)
+     .filter((a) => a !== '--dry-run' && a !== '-n')
+     .map((a) => (a === '--apply' ? '--go' : a));
    const next = nextAction({ command, items, effect, state: null, argv });
    ```
 

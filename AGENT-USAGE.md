@@ -35,7 +35,7 @@ next: ask  (dry run: review the 1 finding before --go)
 
 - **`done`** — nothing is left for this tool to do. Report and finish. At exit `1` it means no further tool step, not success: report the findings.
 
-- **`ask`** — a person’s decision. Report the summary and the findings, then halt. Never take the step yourself; in `--json`, `argv` is what the person would review, not a command for you.
+- **`ask`** — a person’s decision. Report the summary and the findings, then halt. Never take the step yourself; in `--json`, `argv` is what the person would review, not a command for you. (A person running the tool by hand sees the same step as `next: your call: <command>`.)
 
 - **`stop`** — something is broken beyond the tool’s remedy. Report and halt.
 
