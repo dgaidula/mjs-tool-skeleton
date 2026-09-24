@@ -64,6 +64,7 @@ test('name is substituted throughout; no <tool> placeholder survives', () => {
     assert.match(claude, /Driving `my-widget`/);
     assert.match(claude, /runtime v2: the shared\s+machinery of\s+contract `mjs-tool\/2`/);
     assert.match(claude, /EXTRA_OVERRIDE_FLAGS/);
+    assert.match(claude, /GO_ALIASES/);
     assert.match(claude, /await, or synchronously flush, every\s+file write/); // the runtime exits once stdout flushes
     assert.doesNotMatch(claude, /mjs-tool runtime v/); // a fence scanner finds no fence here
   } finally {

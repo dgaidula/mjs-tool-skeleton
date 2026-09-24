@@ -38,6 +38,23 @@ Four changes after the final round (Dan’s approvals after the pilot rerun,
   exit `1`, when its `--go` form holds them aside rather than acting on them.
   Tests: 48 → 52.
 
+Two fixes from the gate on those changes:
+
+- **A `--go` alias never rides in `next.argv`.** A new hook above the fence,
+  `GO_ALIASES` (an array of strings, `[]` by default, checked as the module
+  loads), declares a tool’s aliases of `--go` (`--apply`, `-g`); the guard
+  refuses a declared one in any action’s `argv` (long forms in any case, with
+  or without `=value`; a short one alone or grouped), so advice spells `--go`
+  and the check on a `run`’s `--go` sees it. A policy that advised
+  `apply a.txt --commit` after an `inspect`, or widened a dry run’s paths
+  under the alias, had mutated what was never previewed. Docs: drop only a
+  no-op alias when normalising argv, never a scoping flag.
+
+- **`$'…'` writes a character past ASCII as its UTF-8 bytes** (`\xHH`), not
+  `\uXXXX`, which macOS’s `/bin/sh` and `/bin/bash` 3.2 do not decode: a
+  pasted `cd <cwd> && …` line for a directory holding a NEL, a line separator
+  or a bidi control now runs there too. Tests: 52 → 54.
+
 The final round before the freeze (Dan’s decisions on the pilot, 2026-09-24):
 
 - **A clean dry run advises `ask`**, a person’s call, with the `--go` command

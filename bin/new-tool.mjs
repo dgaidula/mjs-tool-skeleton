@@ -132,11 +132,11 @@ ${agentBlock}
 
 ## Filling in the tool
 
-Search \`${name}.mjs\` for \`TODO(tool):\` — those are the eight spots where
+Search \`${name}.mjs\` for \`TODO(tool):\` — those are the nine spots where
 this tool’s real work goes: the environment check, which targets need
 confirmation, the read-only \`inspect\` report, the \`apply\` mutation, which
 commands mutate, which of them may go on to \`--go\` unattended, the tool’s
-own override flags, and the next-action policy.
+own override flags, its aliases of \`--go\`, and the next-action policy.
 Keep the \`report()\` / \`verdict()\` / \`nextAction()\` shape intact: rendering
 every mode from one set of item objects is what guarantees the human,
 \`--brief\`, and \`--json\` outputs can never disagree.
@@ -148,6 +148,12 @@ or grouped. Any other override this tool accepts goes in
 \`EXTRA_OVERRIDE_FLAGS\`, which the guard reads. Give an override flag no short
 alias other than \`-y\`; an older one (a \`-f\` that means force) must be listed
 there too.
+
+**Aliases of \`--go\`.** A flag this tool accepts in place of \`--go\` (an older
+\`--apply\`, a short \`-g\`) goes in \`GO_ALIASES\`. Advice always spells
+\`--go\`: the guard refuses a declared alias anywhere in \`next.argv\`, since its
+\`--go\` checks cannot see one. Hand \`nextAction()\` and \`report()\` the same
+argv with each alias spelled \`--go\`.
 
 **Auto-run.** A clean dry run advises \`ask\` (a person’s call) unless its
 command is in \`AUTO_RUN_COMMANDS\`, which is empty until you fill it. Only
@@ -187,6 +193,9 @@ const AUTO_RUN_COMMANDS = new Set();
 
 // The scaffolder has no override flags of its own.
 const EXTRA_OVERRIDE_FLAGS = [];
+
+// Nor any alias of --go.
+const GO_ALIASES = [];
 
 // The scaffolder needs nothing beyond the runtime's generic policy.
 function nextAction(run) {
@@ -319,10 +328,10 @@ export { agentBlockFor, briefLine, summarize, exitCodeFor };
 // built from mjs-tool-skeleton. It carries its own imports (namespaced, so they
 // never collide with the tool's); its other top-level names are unprefixed, so
 // a tool keeps no copies of them. The tool supplies, outside this block:
-// MUTATING_COMMANDS, AUTO_RUN_COMMANDS, EXTRA_OVERRIDE_FLAGS, main(), and a
-// nextAction() policy whose result it hands to report(); the block checks
-// their shapes as it loads. To move a tool to a later contract, swap this
-// whole block.
+// MUTATING_COMMANDS, AUTO_RUN_COMMANDS, EXTRA_OVERRIDE_FLAGS, GO_ALIASES,
+// main(), and a nextAction() policy whose result it hands to report(); the
+// block checks their shapes as it loads. To move a tool to a later contract,
+// swap this whole block.
 
 import * as runtimeFs from 'node:fs';
 import * as runtimePath from 'node:path';
@@ -402,6 +411,17 @@ function isOverrideFlag(token) {
   return EXTRA_OVERRIDE_FLAGS.some((f) => (/^-[A-Za-z]$/.test(f)
     ? new RegExp(`^-[A-Za-z]*${f[1]}[A-Za-z]*$`).test(t) // a declared short flag, alone or grouped
     : isFlag(String(f).toLowerCase())));
+}
+
+// A --go alias the tool declares in GO_ALIASES, matched as a declared override
+// flag is: a long one in any case, with or without =value; a short one alone or
+// grouped. Aliases are input only: advice spells --go, which the checks read.
+function isGoAlias(token) {
+  const t = String(token);
+  const low = t.toLowerCase();
+  return GO_ALIASES.some((f) => (/^-[A-Za-z]$/.test(f)
+    ? new RegExp(`^-[A-Za-z]*${f[1]}[A-Za-z]*$`).test(t)
+    : low === f.toLowerCase() || low.startsWith(`${f.toLowerCase()}=`)));
 }
 
 // A next object with the fixed field set. `who` follows from the action and
@@ -517,6 +537,8 @@ function assertSafeNext(next, exit, current = {}) {
   }
   const flag = (argv || []).find(isOverrideFlag);
   if (flag !== undefined) unsafe(`argv carries the override flag ${printable(flag)}; a step that needs one is ask`);
+  const alias = (argv || []).find(isGoAlias);
+  if (alias !== undefined) unsafe(`argv carries ${printable(alias)}, a --go alias in GO_ALIASES; advice spells --go`);
   if (action === 'run' && argv.slice(2).some((a) => a === '--go' || a.startsWith('--go='))) {
     // Advice goes straight to --go only on what this run just previewed: the
     // dry run's own argv with --go added, as rerunArgv(argv, '--go') builds it.
@@ -561,6 +583,14 @@ function escapeControl(c) {
     ?? (code < 0x80 ? `\\x${code.toString(16).padStart(2, '0')}` : `\\u${code.toString(16).padStart(4, '0')}`);
 }
 
+// A control character inside $'...': one past ASCII as its UTF-8 bytes (\xHH
+// each), not \uXXXX, which bash 3.2 (macOS's /bin/sh and /bin/bash) does not
+// decode; bash 4+ and zsh read \xHH too.
+function escapeShell(c) {
+  return c.charCodeAt(0) < 0x80 ? escapeControl(c)
+    : [...Buffer.from(c, 'utf8')].map((b) => `\\x${b.toString(16)}`).join('');
+}
+
 // Text for a text-mode line: control characters shown as escapes, so an item
 // is always one line and nothing in it can pose as another line. TAB passes.
 function printable(text) {
@@ -571,7 +601,7 @@ function printable(text) {
 // character is ANSI-C quoted ($'...') instead, so the line stays one line.
 function shellQuote(token) {
   if (CONTROL_CHARS.test(token)) {
-    return `$'${token.replace(/[\\']/g, (c) => `\\${c}`).replace(new RegExp(CONTROL_CHARS, 'g'), escapeControl)}'`;
+    return `$'${token.replace(/[\\']/g, (c) => `\\${c}`).replace(new RegExp(CONTROL_CHARS, 'g'), escapeShell)}'`;
   }
   return /^[A-Za-z0-9_\/.,:@%+-][A-Za-z0-9_\/.,:=@%+-]*$/.test(token) ? token : `'${token.split("'").join("'\\''")}'`;
 }
@@ -736,6 +766,8 @@ const HOOK_ERROR = (() => {
     ['AUTO_RUN_COMMANDS', 'a Set of command names (empty for none)', () => AUTO_RUN_COMMANDS instanceof Set],
     ['EXTRA_OVERRIDE_FLAGS', 'an array of strings (empty for none)',
       () => Array.isArray(EXTRA_OVERRIDE_FLAGS) && EXTRA_OVERRIDE_FLAGS.every((f) => typeof f === 'string')],
+    ['GO_ALIASES', 'an array of strings (empty for none)',
+      () => Array.isArray(GO_ALIASES) && GO_ALIASES.every((f) => typeof f === 'string')],
     ['nextAction', 'a function', () => typeof nextAction === 'function'],
     ['main', 'a function', () => typeof main === 'function'],
   ];

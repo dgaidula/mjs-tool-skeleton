@@ -113,16 +113,19 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
     `effect` and `argv` that `report()` is handed (the argv the tool gave
     `nextAction()`, or else the process’s own), so advice goes straight to
     `--go` only on what was just previewed and a step into another command
-    carries no `--go`; `done`/`stop` carry none; `wait` never carries
-    `--go` or a `MUTATING_COMMANDS` name;
+    carries no `--go`; no `argv` carries a `--go` alias the tool declares
+    in `GO_ALIASES` (advice spells `--go`, which those checks read);
+    `done`/`stop` carry none; `wait` never carries `--go` or a
+    `MUTATING_COMMANDS` name;
     `why` is one line with no control characters; `cwd` is `START_CWD`, read
     as the module loads). `rerunArgv()` builds `[process.execPath, script as
     invoked, …argv]` and puts extra flags before any `--`. `nextStep()`
     escapes and clips `why` itself, because the guard runs after the work is
     done. Text modes escape control characters (`printable()`, and `$'…'`
-    quoting in the `next:` line): C0 but TAB, DEL, C1, U+2028/2029, and the
-    bidi controls, so a filename can neither break a line, reorder it, nor
-    trip the guard. The `next:` line prints a command only for `run`/`wait`,
+    quoting in the `next:` line, which writes one past ASCII as its UTF-8
+    bytes, `\xHH`, since bash 3.2 does not decode `\u`): C0 but TAB, DEL,
+    C1, U+2028/2029, and the bidi controls, so a filename can neither break
+    a line, reorder it, nor trip the guard. The `next:` line prints a command only for `run`/`wait`,
     led by `cd <cwd> &&` (quoted like the argv) so it runs as pasted from any
     directory, and for `ask` only in human mode, as `your call: …`, with no
     `cd` (its reader is in the directory already). Never move the call
@@ -135,9 +138,9 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
     `CONTRACT`. `effect` is what the run was allowed to do, not what changed:
     a `--go` run whose items all refused is still `applied`. The fence checks
     the tool’s hooks as it loads (`HOOK_ERROR`): `MUTATING_COMMANDS` and
-    `AUTO_RUN_COMMANDS` Sets, `EXTRA_OVERRIDE_FLAGS` an array of strings,
-    `nextAction` and `main` functions; a bad one exits 3 by name (and throws
-    on import).
+    `AUTO_RUN_COMMANDS` Sets, `EXTRA_OVERRIDE_FLAGS` and `GO_ALIASES` arrays
+    of strings, `nextAction` and `main` functions; a bad one exits 3 by name
+    (and throws on import).
 
 12. **The fence is byte-identical everywhere.** `skeleton/tool.mjs` and
     `bin/new-tool.mjs` carry the same block, and the fence test fails until

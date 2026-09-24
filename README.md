@@ -150,7 +150,7 @@ directory.
 |---|---|
 | `action` | `done` (nothing left for this tool to do; at exit `1` that means no further tool step, not success), `run` (run `argv` now), `wait` (run `argv` again after `afterSeconds`), `ask` (a person’s decision: report and halt; `argv` is what the person would run, or `null`), or `stop` (broken beyond the tool’s remedy: report and halt) |
 | `who` | derived from the action, never chosen: `agent` for `run`, `wait` and `done`; `human` for `ask` and `stop` |
-| `argv` | the exact command as an array of strings, or `null` (always `null` for `done` and `stop`). For `run` and `wait`, and for an `ask` that carries one, it re-invokes this tool: `argv[0]` is the node running it (`process.execPath`) and `argv[1]` the tool’s own script as it was invoked, made absolute (not resolved through symlinks, so an npm-linked bin stays its bin path), so it runs without the executable bit and without a `PATH` lookup. A handoff to another tool is `done`, with the next step in the runbook. In the text line it is shell-quoted for reading, and a token holding a control character is ANSI-C quoted (`$'…'`), so the line is always one line. Its `\x` escapes work in any bash or zsh; its `\u` escapes (C1 controls, line separators, bidi controls) need bash 4.2 or later, or zsh, in a UTF-8 locale (macOS’s `/bin/bash` 3.2 prints them literally), so take `argv` from `--json` for such a token |
+| `argv` | the exact command as an array of strings, or `null` (always `null` for `done` and `stop`). For `run` and `wait`, and for an `ask` that carries one, it re-invokes this tool: `argv[0]` is the node running it (`process.execPath`) and `argv[1]` the tool’s own script as it was invoked, made absolute (not resolved through symlinks, so an npm-linked bin stays its bin path), so it runs without the executable bit and without a `PATH` lookup. A handoff to another tool is `done`, with the next step in the runbook. In the text line it is shell-quoted for reading, and a token holding a control character is ANSI-C quoted (`$'…'`), so the line is always one line. Its escapes are all `\xHH` (a character past ASCII — a C1 control, a line separator, a bidi control — as its UTF-8 bytes), which any bash (macOS’s `/bin/sh` and `/bin/bash` 3.2 included) and zsh decode; `--json` carries the exact token |
 | `afterSeconds` | a positive integer for `wait`, otherwise `null` |
 | `why` | one line of prose, the only prose in the object: `nextStep()` escapes any control character in it and clips it to 200 characters, and each name in it to 80 |
 | `cwd` | the process’s working directory at start, read once as the tool loads: run `argv` from here, since its paths may be relative. A `run` or `wait` text line carries it as a leading `cd <cwd> &&`, quoted by the same rules as `argv`, so the line runs as pasted from any directory |
@@ -210,7 +210,9 @@ rendered, and the fixed shape with it: exactly the six fields; `who` as the
 action implies; an `argv` for `run` and `wait`, and any `ask` `argv`,
 starting with this node and this tool’s script, and none for `done` and
 `stop`; a `run` with `--go` only as the `--go` of the dry run it follows
-(rule 3: `report()` hands the guard the run’s `effect` and `argv`); a
+(rule 3: `report()` hands the guard the run’s `effect` and `argv`); no
+`--go` alias the tool declares in `GO_ALIASES`, in any action’s `argv`
+(advice spells `--go`, which the checks read); a
 `wait` with no `--go` and no mutating command in its `argv` (it re-polls,
 so it never mutates);
 `why` one line; `cwd` the start directory. A violation throws, so the run
@@ -247,9 +249,9 @@ tool on the contract and carries its own imports, so the next contract change
 is a mechanical swap of that block rather than a hand edit of every tool, and
 a scanner can read a tool’s contract from its fence. As it loads, the block
 checks the hooks the tool declares above it (`MUTATING_COMMANDS` and
-`AUTO_RUN_COMMANDS` as Sets, `EXTRA_OVERRIDE_FLAGS` as an array of strings,
-`nextAction` and `main` as functions) and names any that is missing or
-misshapen, with exit `3`. `report()` ends the run: the process exits with
+`AUTO_RUN_COMMANDS` as Sets, `EXTRA_OVERRIDE_FLAGS` and `GO_ALIASES` as
+arrays of strings, `nextAction` and `main` as functions) and names any that
+is missing or misshapen, with exit `3`. `report()` ends the run: the process exits with
 the report’s code once stdout has flushed, so a large report is never cut off
 mid-pipe and an open handle cannot hold the run open. So call `report()` once,
 at the end of a run: a long-running loop or daemon must not call it per cycle,
@@ -286,12 +288,13 @@ CLAUDE.md                     the agent-facing usage block, ready to keep
 LICENSE                       MIT © Danniel T. Gaidula
 ```
 
-Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the eight
+Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the nine
 spots: the environment check, which targets need confirmation, the `inspect`
 report, the `apply` mutation, which commands mutate (`MUTATING_COMMANDS`),
 which of them may go on to `--go` unattended (`AUTO_RUN_COMMANDS`), the
-tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), and the next-action policy
-(`nextAction()`). Leave the runtime fence alone.
+tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go`
+(`GO_ALIASES`), and the next-action policy (`nextAction()`). Leave the
+runtime fence alone.
 
 ## The test suite
 
@@ -347,7 +350,9 @@ scaffolded tool. It locks the contract:
   only on the command just previewed (another command’s `--go`, changed
   positionals or flags, or a `--go` after a run that was no dry run
   throws; a dry-run step into another command runs), in the guard, through
-  `report()`, and end to end.
+  `report()`, and end to end; a `GO_ALIASES` alias in any `next.argv` is
+  refused; a pasted `run` line whose directory holds a control character
+  past ASCII runs in bash 3.2 and zsh.
 
 - `--help` prints the header, not code.
 
@@ -366,11 +371,12 @@ npm test      # node --test — runs the skeleton suite and the scaffolder suite
 ## Adopting the contract in an existing tool
 
 The shortest path: paste the runtime fence from `skeleton/tool.mjs` at the
-bottom of the tool, unedited, and write the five things it asks for, which it
+bottom of the tool, unedited, and write the six things it asks for, which it
 checks as it loads — `MUTATING_COMMANDS`, `AUTO_RUN_COMMANDS` (usually an
 empty Set; below), `EXTRA_OVERRIDE_FLAGS` (the tool’s own override flags,
-often `[]`; below), a `nextAction()` policy (start from
-`defaultNextAction()`), and a `main()` that builds the items and ends with
+often `[]`; below), `GO_ALIASES` (its aliases of `--go`, often `[]`;
+below), a `nextAction()` policy (start from `defaultNextAction()`), and a
+`main()` that builds the items and ends with
 `report({ command, effect, items, next, mode, argv })`, where `argv` is the
 argv it handed `nextAction()` (left out, it is the process’s own). The
 runtime then exits with the report’s code once stdout has flushed. Drop any
@@ -408,12 +414,12 @@ adopted the layer never returns `null`.
 `CONTRACT`, `SCRIPT_PATH`, `TOOL_NAME`, `START_CWD`, `GLYPH`, `glyph`,
 `summarize`, `exitCodeFor`, `effectFor`, `NEXT_WHO`, `NEXT_ACTIONS`,
 `NEXT_KEYS`, `ACTIONS_FOR_EXIT`, `OVERRIDE_FLAGS`, `OVERRIDE_PREFIXES`,
-`isOverrideFlag`, `nextStep`, `selfArgv`, `rerunArgv`, `count`, `clipText`,
-`listNames`, `defaultNextAction`, `assertSafeNext`, `CONTROL_CHARS`,
-`escapeControl`, `printable`, `shellQuote`, `nextLine`, `VERDICT_WIDTH`,
-`SUMMARY_WIDTH`, `summaryLine`, `briefLine`, `jsonItem`, `reportedExit`,
-`report`, `outputMode`, `usageError`, `environmentError`, `helpText`,
-`readVersion`, `exitAfterFlush`, `HOOK_ERROR`, `__entry`, and `__isMain`. A 0.1.0 tool already declares several of them
+`isOverrideFlag`, `isGoAlias`, `nextStep`, `selfArgv`, `rerunArgv`, `count`,
+`clipText`, `listNames`, `defaultNextAction`, `assertSafeNext`, `CONTROL_CHARS`,
+`escapeControl`, `escapeShell`, `printable`, `shellQuote`, `nextLine`,
+`VERDICT_WIDTH`, `SUMMARY_WIDTH`, `summaryLine`, `briefLine`, `jsonItem`,
+`reportedExit`, `report`, `outputMode`, `usageError`, `environmentError`,
+`helpText`, `readVersion`, `exitAfterFlush`, `HOOK_ERROR`, `__entry`, and `__isMain`. A 0.1.0 tool already declares several of them
 (`SCRIPT_PATH`, `TOOL_NAME`, `glyph`, `report`, …): delete the tool’s own
 copies before pasting, or the module fails to load with a redeclaration
 error. And never use a fence name at the top level above the fence: the
@@ -450,6 +456,10 @@ What the fence cannot do for you:
    aliases belong to the tool; the skeleton itself gains none. Declare each
    one twice: in the header’s Flags block, beside the flag it stands for, and
    in `parseArgs`, folded into the contract flag before anything reads it.
+   And declare every alias of `--go`, long and short, in `GO_ALIASES`
+   (`['--apply']` below): advice always spells `--go`, and the guard refuses
+   a declared alias anywhere in `next.argv`, since its checks on a `run`’s
+   `--go` cannot see one.
 
    ```js
    // Flags:
@@ -459,7 +469,7 @@ What the fence cannot do for you:
 
    options: {
      go: { type: 'boolean' },
-     apply: { type: 'boolean' },     // alias of --go
+     apply: { type: 'boolean' },     // alias of --go, so GO_ALIASES = ['--apply']
      'dry-run': { type: 'boolean' }, // the default, made explicit
      brief: { type: 'boolean' },
      summary: { type: 'boolean' },   // alias of --brief
@@ -493,7 +503,9 @@ What the fence cannot do for you:
 
    A short form grouped with another flag (`-qn`) is not filtered; the re-run
    then fails as a usage error (exit `2`), which halts an agent, so it fails
-   safe.
+   safe. Drop only a no-op alias, one that restates the default: never a
+   flag that scopes the run (a `--only <glob>`, a `--limit`), or the `--go`
+   the advice re-runs would reach further than the dry run it previewed.
 
 4. **Port the runtime’s tests.** Most of `skeleton/tool.test.mjs` tests the
    fence, not the placeholder commands, and ports to the tool: point `TOOL_URL`

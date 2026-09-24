@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, execFile } from 'node:child_process';
 import {
-  mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync, utimesSync, symlinkSync, readFileSync, realpathSync,
+  mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync, utimesSync, symlinkSync, readFileSync, realpathSync, existsSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { basename } from 'node:path';
@@ -382,6 +382,37 @@ test('rule 2: the guard reads the tool-declared EXTRA_OVERRIDE_FLAGS (long forms
   }
 });
 
+test('a --go alias the tool declares in GO_ALIASES is refused anywhere in next.argv; advice that spells --go still runs', async () => {
+  const dir = tmp();
+  try {
+    const copy = patchedCopy(dir, 'return GO_ALIASES.some(', "return ['--commit', '-g', ...GO_ALIASES].some(");
+    const tool = await import(pathToFileURL(copy).href);
+    const previewed = { effect: 'dry-run', argv: ['apply', 'a.txt'] };
+    const guard = (action, args, current = previewed) => () => tool.assertSafeNext(
+      tool.nextStep(action, 'x', { argv: tool.rerunArgv(args), afterSeconds: action === 'wait' ? 5 : null }), 0, current);
+    // Long forms in any case, with or without =value; the short form alone or grouped.
+    for (const alias of ['--commit', '--COMMIT', '--Commit=1', '--commit=yes', '-g', '-qg', '-gq']) {
+      for (const action of ['run', 'wait', 'ask']) {
+        assert.throws(guard(action, ['apply', 'a.txt', alias]), new RegExp(`carries ${alias}, a --go alias`), `${action} ${alias}`);
+      }
+    }
+    // After a read-only run, or widened past what was previewed: never run as an alias.
+    assert.throws(guard('run', ['apply', 'a.txt', '--commit'], { effect: 'read-only', argv: ['inspect', 'a.txt'] }), /a --go alias/);
+    assert.throws(guard('run', ['apply', 'a.txt', 'b.txt', '--commit']), /a --go alias/);
+    assert.throws(() => tool.report({ command: 'apply', items: [OK_ITEM], mode: 'json', ...previewed,
+      next: tool.nextStep('run', 'x', { argv: tool.rerunArgv(previewed.argv, '--commit') }) }), /a --go alias/);
+    // Matched exactly: a longer flag, another case of the short one, or a bare word passes.
+    for (const flag of ['--commits', '-G', '-q', 'commit']) assert.doesNotThrow(guard('run', ['apply', 'a.txt', flag]), flag);
+    // The refusal names the token escaped, so the diagnostic stays one line.
+    assert.throws(guard('ask', ['apply', '--commit=1\nnext: run x']),
+      (e) => !e.message.includes('\n') && e.message.includes('--commit=1\\nnext: run x'));
+    // The same step spelled --go, on what was just previewed, still passes.
+    assert.doesNotThrow(() => tool.assertSafeNext(tool.nextStep('run', 'x', { argv: tool.rerunArgv(previewed.argv, '--go') }), 0, previewed));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('rule 2 end to end: an injected override exits 3 with nothing on stdout; --yes is never echoed', () => {
   const dir = tmp();
   try {
@@ -498,7 +529,7 @@ test('next: line quotes argv for reading and shows the wait; run and wait lead w
   assert.equal(at(nextStep('done', 'nothing to apply')), 'next: done  (nothing to apply)');
   // A tab needs no escape, but a token holding one is quoted; a bidi control is ANSI-C quoted.
   assert.equal(at(nextStep('run', 'x', { argv: ['t', 'a\tb'] })), "next: run cd /work && t 'a\tb'  (x)");
-  assert.equal(at(nextStep('run', 'x', { argv: ['t', 'a\u202eb'] })), "next: run cd /work && t $'a\\u202eb'  (x)");
+  assert.equal(at(nextStep('run', 'x', { argv: ['t', 'a\u202eb'] })), "next: run cd /work && t $'a\\xe2\\x80\\xaeb'  (x)");
   assert.equal(
     at(nextStep('run', 'clean', { argv: ['t', 'apply', 'my file.txt', "it's", '--go'] })),
     "next: run cd /work && t apply 'my file.txt' 'it'\\''s' --go  (clean)",
@@ -879,6 +910,7 @@ test('the runtime names a missing or misshapen hook as the module loads (exit 3,
       MUTATING_COMMANDS: "const MUTATING_COMMANDS = new Set(['apply']);",
       AUTO_RUN_COMMANDS: 'const AUTO_RUN_COMMANDS = new Set();',
       EXTRA_OVERRIDE_FLAGS: 'const EXTRA_OVERRIDE_FLAGS = [];',
+      GO_ALIASES: 'const GO_ALIASES = [];',
       nextAction: 'function nextAction() { return null; }',
       main: "async function main() { console.log('main ran'); }",
     };
@@ -889,6 +921,7 @@ test('the runtime names a missing or misshapen hook as the module loads (exit 3,
       ['MUTATING_COMMANDS', "const MUTATING_COMMANDS = ['apply'];"],
       ['AUTO_RUN_COMMANDS', ''], // a pre-0.2.0-final tool that never declared it
       ['EXTRA_OVERRIDE_FLAGS', 'const EXTRA_OVERRIDE_FLAGS = [42];'],
+      ['GO_ALIASES', "const GO_ALIASES = '--apply';"],
       ['nextAction', ''],
       ['main', 'const main = 1;'],
     ]) {
@@ -929,6 +962,30 @@ test('a text-mode run line runs as pasted into a fresh shell from another direct
       assert.equal(out.at(-1), 'next: done  (applied: 1 changed)', mode.join(''));
       assert.equal(out.at(-2), 'summary: ok=1 warn=0 skip=0 refuse=0 fail=0', mode.join(''));
       assert.ok(statSync(f).mtimeMs > 1e12, mode.join(''));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a run line whose cwd holds a control character past ASCII runs as pasted into bash (3.2 on macOS) and zsh', () => {
+  const dir = tmp();
+  try {
+    const copy = patchedCopy(dir, ...AUTO_RUN);
+    for (const name of ['nel\u0085dir', 'ls dir', 'bidi‮dir']) {
+      const work = path.join(dir, name);
+      mkdirSync(work);
+      const f = path.join(work, 'a.txt');
+      writeFileSync(f, 'x');
+      const line = spawnSync(NODE, [copy, 'apply', 'a.txt', '--brief'], { cwd: work, encoding: 'utf8', timeout: 15000 }).stdout.trimEnd().split('\n').at(-1);
+      const command = line.slice('next: run '.length, line.lastIndexOf('  ('));
+      assert.match(command, /^cd \$'[^\u0080-￿]+' && /, line); // written as \xHH bytes, which bash 3.2 decodes
+      for (const shell of ['/bin/bash', '/bin/zsh'].filter(existsSync)) {
+        utimesSync(f, new Date(1e12), new Date(1e12));
+        const obeyed = spawnSync(shell, ['-c', command], { cwd: dir, encoding: 'utf8', timeout: 15000 });
+        assert.equal(obeyed.status, 0, `${shell} ${JSON.stringify(name)}: ${obeyed.stderr}`);
+        assert.ok(statSync(f).mtimeMs > 1e12, `${shell} ${JSON.stringify(name)}`);
+      }
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -994,6 +1051,7 @@ test('end to end: a policy that chains into another command\'s --go exits 3; a d
       "const MUTATING_COMMANDS = new Set(['apply', 'other']);",
       "const AUTO_RUN_COMMANDS = new Set(['apply']);",
       'const EXTRA_OVERRIDE_FLAGS = [];',
+      'const GO_ALIASES = [];',
       `function nextAction(run) { ${policy} }`,
       // A minimal tool whose report() call hands no argv, as one that adopted the contract before it could.
       "async function main() { const argv = process.argv.slice(2); const effect = effectFor(argv[0], argv.includes('--go'));",
