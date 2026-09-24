@@ -232,16 +232,20 @@ async function confirmMutation(item, { yes }) {
 // handler the question promise never settles, the loop drains, and the tool
 // exits 0 with no report after any mutations already made (found in review,
 // 2026-09-20). Declining renders the report and exits 1 like any refusal.
-async function promptYesNo(question) {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
+// The streams are injectable for the tests; the tool always uses stdin/stderr.
+// readline/promises' question() returns a promise and takes no callback: a
+// callback there was silently ignored, so no answer ever confirmed (found in
+// review, 2026-09-24).
+async function promptYesNo(question, { input = process.stdin, output = process.stderr } = {}) {
+  const rl = createInterface({ input, output });
   return new Promise((resolve) => {
     let settled = false;
     const done = (v) => { if (!settled) { settled = true; rl.close(); resolve(v); } };
     rl.once('close', () => done(false));
-    rl.question(`${question} [y/N] `, (answer) => {
+    rl.question(`${question} [y/N] `).then((answer) => {
       const a = String(answer).trim().toLowerCase();
       done(a === 'y' || a === 'yes');
-    });
+    }, () => done(false));
   });
 }
 
@@ -250,6 +254,14 @@ async function promptYesNo(question) {
 // TODO(tool): the commands that mutate behind the --go gate. effectFor() reads
 // this set to label each run read-only, dry-run, or applied.
 const MUTATING_COMMANDS = new Set(['apply']);
+
+// TODO(tool): this tool's own confirmation or override flags, beyond the ones
+// the runtime already blocks (--yes*, --force*, --assume-yes, --allow,
+// --allow=*, --allow-*, --i-am-*, and -y or -Y alone or grouped). The guard
+// keeps each one, with or without =value, out of next.argv. Give an override
+// flag no short alias other than -y; if an older tool already has one (a -f
+// that means force), list it here too.
+const EXTRA_OVERRIDE_FLAGS = [];
 
 // The next-action policy: the single source of `next`, as verdict() is of
 // verdicts. Pure: it reads the finished items and never re-probes the world.
@@ -271,7 +283,10 @@ function nextAction(run) {
   // Under --go with no TTY, the confirmation could not even be asked.
   const waiting = items.filter((it) => it.awaitingConfirmation);
   if (effect === 'applied' && waiting.length) {
-    return nextStep('ask', `left unconfirmed without a TTY; a person must confirm at a terminal: ${listNames(waiting)}`, { argv: rerunArgv(argv) });
+    // A derived tool with a second gate may have been handed an override for
+    // the first one: next never repeats it, so there is no command to suggest.
+    const again = rerunArgv(argv);
+    return nextStep('ask', `left unconfirmed without a TTY; a person must confirm at a terminal: ${listNames(waiting)}`, { argv: again.some(isOverrideFlag) ? null : again });
   }
   return next;
 }
@@ -301,11 +316,11 @@ async function main() {
 
   if (values.help) {
     console.log(helpText());
-    process.exit(0);
+    return;
   }
   if (values.version) {
     console.log(`${TOOL_NAME} ${readVersion()}`);
-    process.exit(0);
+    return;
   }
 
   const mode = outputMode(values);
@@ -334,11 +349,13 @@ async function main() {
 
   const effect = effectFor(command, !!values.go);
   const next = nextAction({ command, items, effect, state: null, argv: process.argv.slice(2) });
-  process.exit(report({ command, effect, items, next, mode }));
+  // exitCode, not exit(): process.exit() drops whatever stdout has not yet
+  // flushed, and a pipe takes 64 KiB at a time on macOS.
+  process.exitCode = report({ command, effect, items, next, mode });
 }
 
 export {
-  verdict, inspectOne, applyOne, nextAction,
+  verdict, inspectOne, applyOne, promptYesNo, nextAction, EXTRA_OVERRIDE_FLAGS,
   glyph, briefLine, jsonItem, summarize, exitCodeFor, effectFor,
   nextStep, defaultNextAction, assertSafeNext, nextLine, report,
 };
@@ -346,9 +363,11 @@ export {
 // ---- mjs-tool runtime v2 (do not edit; replace wholesale) ----
 // The shared machinery of contract mjs-tool/2, byte-identical in every tool
 // built from mjs-tool-skeleton. It carries its own imports (namespaced, so they
-// never collide with the tool's). The tool supplies, outside this block:
-// MUTATING_COMMANDS, main(), and a nextAction() policy whose result it hands
-// to report(). To move a tool to a later contract, swap this whole block.
+// never collide with the tool's); its other top-level names are unprefixed, so
+// a tool keeps no copies of them. The tool supplies, outside this block:
+// MUTATING_COMMANDS, EXTRA_OVERRIDE_FLAGS, main(), and a nextAction() policy
+// whose result it hands to report(). To move a tool to a later contract, swap
+// this whole block.
 
 import * as runtimeFs from 'node:fs';
 import * as runtimePath from 'node:path';
@@ -393,38 +412,51 @@ function effectFor(command, go) {
 // -- next: the advice on the next step
 
 const NEXT_ACTIONS = ['done', 'run', 'wait', 'ask', 'stop'];
-const NEXT_KEYS = ['action', 'who', 'argv', 'afterSeconds', 'why'];
+const NEXT_KEYS = ['action', 'who', 'argv', 'afterSeconds', 'why', 'cwd'];
 // Rule 4: the advice never contradicts the exit code, which stays authoritative.
 // Exit 0 allows ask: a clean run can still end at a person's decision.
 const ACTIONS_FOR_EXIT = { 0: ['done', 'run', 'wait', 'ask'], 1: NEXT_ACTIONS, 2: ['stop'], 3: ['stop'] };
 // Rule 2: a flag that confirms or overrides a gate never appears in next.argv.
-const OVERRIDE_FLAGS = ['--yes', '--force'];
-const OVERRIDE_PREFIXES = ['--allow-', '--i-am-'];
+// Long flags match case-insensitively, with or without =value; the tool adds
+// its own through EXTRA_OVERRIDE_FLAGS.
+const OVERRIDE_FLAGS = ['--allow'];
+const OVERRIDE_PREFIXES = ['--yes', '--force', '--assume-yes', '--allow-', '--i-am-'];
 
 function isOverrideFlag(token) {
   const t = String(token);
-  if (OVERRIDE_FLAGS.some((f) => t === f || t.startsWith(`${f}=`))) return true;
-  if (OVERRIDE_PREFIXES.some((p) => t.startsWith(p))) return true;
-  return /^-[A-Za-z]*y[A-Za-z]*$/.test(t); // -y (the short --yes), alone or grouped
+  const lower = t.toLowerCase();
+  const isFlag = (f) => lower === f || lower.startsWith(`${f}=`);
+  if (OVERRIDE_FLAGS.some(isFlag) || OVERRIDE_PREFIXES.some((p) => lower.startsWith(p))) return true;
+  if (/^-[A-Za-z]*[yY][A-Za-z]*$/.test(t)) return true; // -y or -Y (the short --yes), alone or grouped
+  return EXTRA_OVERRIDE_FLAGS.some((f) => (/^-[A-Za-z]$/.test(f)
+    ? new RegExp(`^-[A-Za-z]*${f[1]}[A-Za-z]*$`).test(t) // a declared short flag, alone or grouped
+    : isFlag(String(f).toLowerCase())));
 }
 
 // A next object with the fixed field set. `who` defaults to human for ask and
-// stop (a person takes it from there) and to agent otherwise.
-function nextStep(action, why, { who = action === 'ask' || action === 'stop' ? 'human' : 'agent', argv = null, afterSeconds = null } = {}) {
-  return { action, who, argv, afterSeconds, why };
+// stop (a person takes it from there) and to agent otherwise; `cwd` is where
+// argv was built to run from, since its paths may be relative.
+function nextStep(action, why, { who = action === 'ask' || action === 'stop' ? 'human' : 'agent', argv = null, afterSeconds = null, cwd = process.cwd() } = {}) {
+  return { action, who, argv, afterSeconds, why, cwd };
 }
 
-// This tool's own command line again, as an argv array, with flags appended.
+// This tool's own command line again, as an argv array, with flags inserted
+// before any `--` (after it they would be positionals). argv[0] is the script
+// as invoked, made absolute but not realpath'd, so an npm-linked bin stays its
+// bin path and next never runs whatever else is on PATH under the same name.
 function rerunArgv(argv, ...extra) {
-  return [TOOL_NAME, ...argv, ...extra];
+  const self = __entry === SCRIPT_PATH ? runtimePath.resolve(process.argv[1]) : SCRIPT_PATH;
+  const end = argv.indexOf('--');
+  return end < 0 ? [self, ...argv, ...extra] : [self, ...argv.slice(0, end), ...extra, ...argv.slice(end)];
 }
 
 function count(n, noun) {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
+// Names go into `why`, which must stay one clean line whatever a filename holds.
 function listNames(items, max = 3) {
-  const names = items.slice(0, max).map((it) => it.name).join(', ');
+  const names = items.slice(0, max).map((it) => printable(it.name)).join(', ');
   return items.length > max ? `${names} and ${items.length - max} more` : names;
 }
 
@@ -433,11 +465,11 @@ function listNames(items, max = 3) {
 function defaultNextAction({ items, effect, argv }) {
   const s = summarize(items);
   const findings = s.warn + s.refuse + s.fail;
-  if (effect === 'read-only') {
-    return nextStep('done', findings ? `read-only: report the ${count(findings, 'finding')}` : 'read-only: nothing to apply');
-  }
   if (s.fail) {
     return nextStep('stop', `failed: ${listNames(items.filter((it) => it.verdict === 'fail'))}`);
+  }
+  if (effect === 'read-only') {
+    return nextStep('done', findings ? `read-only: report the ${count(findings, 'finding')}` : 'read-only: nothing to apply');
   }
   if (effect === 'dry-run') {
     if (argv.some(isOverrideFlag)) {
@@ -466,7 +498,7 @@ function assertSafeNext(next, exit) {
   if (keys.length !== NEXT_KEYS.length || !NEXT_KEYS.every((k) => keys.includes(k))) {
     unsafe(`the fields are exactly ${NEXT_KEYS.join(', ')}`);
   }
-  const { action, who, argv, afterSeconds, why } = next;
+  const { action, who, argv, afterSeconds, why, cwd } = next;
   if (!NEXT_ACTIONS.includes(action)) unsafe(`unknown action ${JSON.stringify(action)}`);
   if (who !== 'agent' && who !== 'human') unsafe(`who is agent or human, not ${JSON.stringify(who)}`);
   if (action === 'ask' && who !== 'human') unsafe('ask is always who: human');
@@ -479,21 +511,44 @@ function assertSafeNext(next, exit) {
   if (action === 'wait' ? !(Number.isInteger(afterSeconds) && afterSeconds > 0) : afterSeconds !== null) {
     unsafe('afterSeconds is a positive integer for wait, and null otherwise');
   }
-  if (typeof why !== 'string' || !why.trim() || why.includes('\n')) unsafe('why is one non-empty line');
+  if (typeof why !== 'string' || !why.trim() || CONTROL_CHARS.test(why)) {
+    unsafe('why is one non-empty line, with no control characters');
+  }
+  if (typeof cwd !== 'string' || !runtimePath.isAbsolute(cwd)) unsafe('cwd is an absolute path');
   if (!(ACTIONS_FOR_EXIT[exit] || []).includes(action)) unsafe(`action ${action} contradicts exit ${exit}`);
 }
 
-// POSIX single-quoting, only where a token needs it.
+// C0 and C1 controls, DEL, and the Unicode line and paragraph separators:
+// anything that could break, rewrite or hide part of a line of text output.
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+function escapeControl(c) {
+  const code = c.charCodeAt(0);
+  return { '\n': '\\n', '\r': '\\r', '\t': '\\t' }[c]
+    ?? (code < 0x80 ? `\\x${code.toString(16).padStart(2, '0')}` : `\\u${code.toString(16).padStart(4, '0')}`);
+}
+
+// Text for a text-mode line: control characters shown as escapes, so an item
+// is always one line and nothing in it can pose as another line.
+function printable(text) {
+  return String(text).replace(new RegExp(CONTROL_CHARS, 'g'), escapeControl);
+}
+
+// POSIX single-quoting, only where a token needs it; a token holding a control
+// character is ANSI-C quoted ($'...') instead, so the line stays one line.
 function shellQuote(token) {
+  if (CONTROL_CHARS.test(token)) {
+    return `$'${token.replace(/[\\']/g, (c) => `\\${c}`).replace(new RegExp(CONTROL_CHARS, 'g'), escapeControl)}'`;
+  }
   return /^[A-Za-z0-9_\/.,:@%+-][A-Za-z0-9_\/.,:=@%+-]*$/.test(token) ? token : `'${token.split("'").join("'\\''")}'`;
 }
 
-// The text form of `next`, the last line of every text mode. argv is quoted
-// for reading; --json carries the exact array.
+// The text form of `next`, the last line of every text mode, and always exactly
+// one line. argv is quoted for reading; --json carries the exact array.
 function nextLine(next) {
   const delay = next.action === 'wait' ? ` ${next.afterSeconds}s` : '';
   const command = next.argv ? ` ${next.argv.map(shellQuote).join(' ')}` : '';
-  return `next: ${next.action}${delay}${command}  (${next.why})`;
+  return `next: ${next.action}${delay}${command}  (${printable(next.why)})`;
 }
 
 // -- rendering (one item shape -> every mode)
@@ -509,8 +564,8 @@ function summaryLine(s, effect) {
 // One line per item. The parenthesised reason appears only for a non-ok verdict.
 function briefLine(item) {
   const showReason = item.verdict !== 'ok' && item.reason;
-  return `${glyph(item.verdict)} ${item.verdict.padEnd(VERDICT_WIDTH)} ${String(item.summary).padEnd(SUMMARY_WIDTH)} ${item.name}`
-    + (showReason ? `  (${item.reason})` : '');
+  return `${glyph(item.verdict)} ${item.verdict.padEnd(VERDICT_WIDTH)} ${printable(item.summary).padEnd(SUMMARY_WIDTH)} ${printable(item.name)}`
+    + (showReason ? `  (${printable(item.reason)})` : '');
 }
 
 // The stable per-item JSON shape (top-level keys fixed; tool-specific facts go
@@ -528,9 +583,11 @@ function jsonItem(item) {
 }
 
 // The only writer of stdout. Renders one run in the chosen mode from the one
-// item list and returns its exit code, so main() exits with exactly the code
-// --json reported. `next` passes assertSafeNext() before a byte is written;
-// `state` (a status snapshot) is optional and appears in --json only.
+// item list and returns its exit code, which main() sets as process.exitCode
+// (never process.exit(), which would cut a large report off mid-pipe), so the
+// run exits with exactly the code --json reported. `next` passes
+// assertSafeNext() before a byte is written; `state` (a status snapshot) is
+// optional and appears in --json only.
 function report({ command, effect, items, next, state = null, mode }) {
   const summary = summarize(items);
   const exit = exitCodeFor(items);
@@ -549,9 +606,9 @@ function report({ command, effect, items, next, state = null, mode }) {
     for (const it of items) lines.push(briefLine(it));
   } else if (mode === 'human') {
     for (const it of items) {
-      lines.push(`${glyph(it.verdict)} ${it.name}`, `    ${it.summary}`);
-      for (const line of it.lines || []) lines.push(`    ${line}`);
-      if (it.reason) lines.push(`    ${it.verdict === 'ok' ? 'note' : it.verdict}: ${it.reason}`);
+      lines.push(`${glyph(it.verdict)} ${printable(it.name)}`, `    ${printable(it.summary)}`);
+      for (const line of it.lines || []) lines.push(`    ${printable(line)}`);
+      if (it.reason) lines.push(`    ${it.verdict === 'ok' ? 'note' : it.verdict}: ${printable(it.reason)}`);
     }
     lines.push('');
   }
@@ -572,7 +629,8 @@ function outputMode(values) {
   return values.json ? 'json' : values.brief ? 'brief' : values.quiet ? 'quiet' : 'human';
 }
 
-// Diagnostics go to stderr; stdout stays empty on both.
+// Diagnostics go to stderr; stdout stays empty on both. These two may exit at
+// once: they run before report(), so there is no stdout left to flush.
 function usageError(message) {
   console.error(`error: ${message}`);
   console.error(`run \`${TOOL_NAME} --help\` for usage`);
@@ -615,14 +673,20 @@ function readVersion() {
 // npm-linked bin is a symlink, so process.argv[1] is the link path while
 // import.meta.url is the real path, and the naive guard silently skips main()
 // (exit 0, no output). realpath both sides to compare. An exception escaping
-// main() exits 3: the run could not complete, which is not a partial result (1).
+// main(), or thrown later from a timer, a floating promise or a stream with no
+// 'error' handler, exits 3: the run could not complete, which is not a partial
+// result (1). An error while the module loads (a syntax error, a top-level use
+// of a fence name above the fence) happens before this runs, and Node exits 1.
 const __entry = process.argv[1]
   ? (() => { try { return runtimeFs.realpathSync(process.argv[1]); } catch { return process.argv[1]; } })()
   : null;
 if (__entry && import.meta.url === runtimeUrl.pathToFileURL(__entry).href) {
-  main().catch((e) => {
+  const fatal = (e) => {
     console.error(`error: ${e?.message ?? e}`);
     process.exit(3);
-  });
+  };
+  process.on('uncaughtException', fatal);
+  process.on('unhandledRejection', fatal);
+  main().catch(fatal);
 }
 // ---- end mjs-tool runtime v2 ----

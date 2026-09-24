@@ -6,9 +6,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const NEW_TOOL = new URL('../bin/new-tool.mjs', import.meta.url).pathname;
-const SKELETON = new URL('../skeleton/tool.mjs', import.meta.url).pathname;
+// fileURLToPath, not .pathname, which keeps %20 for a space in the checkout path.
+const NEW_TOOL = fileURLToPath(new URL('../bin/new-tool.mjs', import.meta.url));
+const SKELETON = fileURLToPath(new URL('../skeleton/tool.mjs', import.meta.url));
 
 function run(args, opts = {}) {
   return spawnSync('node', [NEW_TOOL, ...args], { encoding: 'utf8', timeout: 20000, ...opts });
@@ -57,8 +59,12 @@ test('name is substituted throughout; no <tool> placeholder survives', () => {
     // the test locator was rewritten for the scaffolded layout
     const testSrc = readFileSync(path.join(root, 'test', 'my-widget.test.mjs'), 'utf8');
     assert.match(testSrc, /new URL\('\.\.\/my-widget\.mjs', import\.meta\.url\)/);
-    // CLAUDE.md carries the agent-usage block
-    assert.match(readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), /Driving `my-widget`/);
+    // CLAUDE.md carries the agent-usage block, and names the contract of the fence it got
+    const claude = readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
+    assert.match(claude, /Driving `my-widget`/);
+    assert.match(claude, /runtime v2: the shared\s+machinery of\s+contract `mjs-tool\/2`/);
+    assert.match(claude, /EXTRA_OVERRIDE_FLAGS/);
+    assert.doesNotMatch(claude, /mjs-tool runtime v/); // a fence scanner finds no fence here
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -139,6 +145,10 @@ function fenceOf(file) {
 
 test('the runtime fence is byte-identical in the skeleton and the scaffolder', () => {
   assert.equal(fenceOf(NEW_TOOL), fenceOf(SKELETON));
+  // Only the two marker lines carry the marker text, so a scanner finds one fence per file.
+  for (const file of [NEW_TOOL, SKELETON]) {
+    assert.equal(readFileSync(file, 'utf8').split('mjs-tool runtime v').length, 3, file);
+  }
 });
 
 test('brief and human item and summary lines are byte-identical to 0.1.0 (README sample)', () => {
@@ -180,11 +190,12 @@ test('brief and human item and summary lines are byte-identical to 0.1.0 (README
   }
 });
 
-test('a scaffolded tool passes its own shipped tests and carries the same fence', () => {
+test('a scaffolded tool passes its own shipped tests (from a path with a space) and carries the same fence', () => {
   const dir = tmp();
   try {
-    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
-    const root = path.join(dir, 'my-widget');
+    const spaced = path.join(dir, 'space dir');
+    assert.equal(run(['my-widget', '--dir', spaced, '--quiet']).status, 0);
+    const root = path.join(spaced, 'my-widget');
     assert.equal(fenceOf(path.join(root, 'my-widget.mjs')), fenceOf(SKELETON));
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT; // run it as its own top-level suite, not as our child

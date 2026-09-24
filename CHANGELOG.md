@@ -7,6 +7,39 @@
 Contract `mjs-tool/2`: a next-action layer, an explicit effect, and one shared
 runtime block. Additive for `--json` consumers; the text modes gain one line.
 
+Gate fixes before the first push (Opus 5.5 gate pass, 2026-09-24):
+
+- **Large output no longer truncates.** `main()` sets `process.exitCode` from
+  `report()` and returns instead of calling `process.exit()`, which dropped
+  everything past the first 64 KiB through a pipe on macOS (a 300-item
+  `--json` did not parse; a 3,000-item `--brief` ended mid-item, exit 0).
+- **Control characters.** A newline in a filename made the runtime’s own
+  policy fail its own guard after mutating (exit 3, no report), and could
+  forge the last line. Text modes now show control characters as escapes
+  (`\n`, `\x1b`), the `next:` line ANSI-C quotes such a token (`$'…'`),
+  names reach `why` escaped, and the guard still rejects a raw one in `why`.
+  Output without control characters is byte-for-byte unchanged.
+- **The y/N prompt confirms again** (pre-existing since 0.1.0): the answer
+  callback passed to `readline/promises` was ignored, so `y` never
+  confirmed.
+- **Uncaught errors outside `main()`** (a timer, a floating rejection, a
+  stream with no `'error'` handler) exit 3, not 1. An error while the module
+  loads still exits 1; the docs now say so.
+- **`next.argv[0]` is the script as invoked, made absolute**, and `next` gains a
+  sixth field, `cwd` (the absolute directory the run happened in) —
+  **provisional (pilot)**, pending the pilot adoption. `--go` goes before a
+  `--` terminator. A failed item advises `stop` in a read-only run too.
+- **Override flags.** The guard blocks any `--yes*` or `--force*`,
+  `--assume-yes`, `--allow`, `--allow=*`, `--allow-*`, `--i-am-*` (any
+  case), `-y` or `-Y` alone or grouped, and the tool’s own
+  `EXTRA_OVERRIDE_FLAGS` (a new hook above the fence). An unconfirmed `--go`
+  that carried an override advises `ask` with no `argv`.
+- Both suites locate their files with `fileURLToPath`, not `URL.pathname`,
+  so they pass from a path with a space (pre-existing). The README lists the
+  names the fence owns; the scaffolded `CLAUDE.md` derives its runtime
+  version from the fence. Tests: 28 → 40, a regression for each fix and for
+  each of the gate’s surviving mutants.
+
 - **`--json` gains top-level `contract`** (`"mjs-tool/2"`), **`effect`**
   (`"read-only"`, `"dry-run"`, or `"applied"`, from `effectFor()`), **`exit`**
   (the code the run returns), **`next`** (an object or `null`), and an

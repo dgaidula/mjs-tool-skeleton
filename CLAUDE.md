@@ -66,8 +66,16 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
    (warn/refuse/fail) · 2 usage · 3 could not run to completion (an environment
    error, or an internal error: an exception escaping `main()`, including a
    `next` the guard rejects). `exitCodeFor()` owns 0/1, `usageError()` 2, and
-   `environmentError()` plus the entry guard’s catch 3 — all in the fence. An
-   uncaught throw must never exit 1: that would read as a partial result.
+   `environmentError()` plus the entry guard’s catch 3 — all in the fence. The
+   entry guard also installs `uncaughtException` and `unhandledRejection`
+   handlers, so a throw from a timer, a floating promise, or a stream with no
+   `'error'` handler exits 3 too. An uncaught throw must never exit 1: that
+   would read as a partial result. The one gap: an error while the module
+   loads (a syntax error, a top-level use of a fence name above the fence)
+   happens before the fence runs, and Node exits 1. `main()` sets
+   `process.exitCode` from `report()` and returns — never `process.exit()`
+   after output, which drops unflushed stdout (a pipe takes 64 KiB at a time
+   on macOS).
 
 9. **`nextAction()` is the single source of `next`**, as `verdict()` is of
    verdicts: pure, fed the finished items, `effect`, and argv, never
@@ -78,15 +86,21 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
 
 10. **The `next` safety rules are enforced, not documented.** `report()` calls
     `assertSafeNext(next, exit)` before it writes a byte, and a violation
-    throws (exit 3). Rule 2: `next.argv` never carries `--yes`, `--force`,
-    `--allow-*`, `--i-am-*` (each with or without `=value`) or `-y`, alone or
-    grouped; a step that needs one is `ask`. Rule 4: `next` never contradicts
-    the exit code — 0 allows done/run/wait/ask, 1 any, 2 and 3 only stop. The
-    guard also fixes the shape (exactly `action, who, argv, afterSeconds,
-    why`; `ask` is always `human`; `run`/`wait` need an argv; `why` is one
-    line). Never move the call out of `report()`, never loosen the lists, and
-    never give an override flag a short alias other than `-y` — the guard
-    knows no other.
+    throws (exit 3). Rule 2: `next.argv` never carries `--yes*`, `--force*`,
+    `--assume-yes`, `--allow`, `--allow=*`, `--allow-*`, `--i-am-*` (long forms
+    case-insensitive, with or without `=value`), `-y` or `-Y` alone or grouped,
+    or a flag in the tool’s `EXTRA_OVERRIDE_FLAGS`; a step that needs one is
+    `ask`. Rule 4: `next` never contradicts the exit code — 0 allows
+    done/run/wait/ask, 1 any, 2 and 3 only stop. The guard also fixes the shape
+    (exactly `action, who, argv, afterSeconds, why, cwd`; `ask` is always
+    `human`; `run`/`wait` need an argv; `why` is one line with no control
+    characters; `cwd` is absolute). `argv[0]` is the script as invoked, made
+    absolute (`rerunArgv()`), and extra flags go before any `--`. Text modes
+    escape control characters (`printable()`, and `$'…'` quoting in the `next:`
+    line), so a filename can neither break a line nor trip the guard. Never
+    move the call out of `report()`, never loosen the lists, and never give an
+    override flag a short alias other than `-y` unless the tool declares it in
+    `EXTRA_OVERRIDE_FLAGS` — the guard knows no other.
 
 11. **`effect` comes only from `effectFor(command, go)`**, which reads the
     tool’s `MUTATING_COMMANDS`; `contract` comes only from the fence’s
@@ -160,6 +174,13 @@ override flag smuggled into a re-run argv) come from a temp copy of the tool
 with one line of the fence patched: the fence is identical in every tool, so
 those anchors survive a tool author’s TODO(tool) edits. The 0.1.0 golden lines
 live inline in `test/new-tool.test.mjs`.
+
+The y/N prompt is tested with injected streams; the real TTY path is a manual
+check (a pty test proved timing-sensitive under `script`). From a temp dir
+holding a `protected.txt`, `sh -c "sleep 1; printf 'y\n'; sleep 1" | script -q
+/dev/null node skeleton/tool.mjs apply protected.txt --go --brief` must touch the
+file and exit 0; `n` in place of `y`, or `printf '\004'` (Ctrl-D), refuses and
+exits 1.
 
 When you scaffold into a temp dir to check something by hand, delete the output
 afterward — don’t leave a generated tool tree in the repo.

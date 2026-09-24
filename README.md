@@ -63,11 +63,15 @@ is not `ok`**. Refusals, warnings, and skips are never collapsed or dropped:
 • skip   is a directory                         assets  (apply targets files, not directories)
 ⊘ refuse no such path                           gone.txt  (path does not exist)
 summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
-next: ask tool apply report.txt notes.txt assets gone.txt --brief --go  (dry run: review the 1 finding before --go)
+next: ask /home/me/bin/tool apply report.txt notes.txt assets gone.txt --brief --go  (dry run: review the 1 finding before --go)
 ```
 
 The item and summary lines are frozen: byte for byte what 0.1.0 printed,
 padding included, because the aligned columns are there for a person to scan.
+The one exception is a control character in a name, summary, or reason (a
+newline, a carriage return, an escape sequence): text modes show it as an
+escape (`\n`, `\x1b`), so every item stays one line and nothing in it can
+pose as a `next:` line. `--json` carries the exact value.
 
 The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
 (a dry run with a protected target):
@@ -92,9 +96,10 @@ The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
   "summary": { "ok": 2, "warn": 0, "skip": 0, "refuse": 0, "fail": 0 },
   "next": {
     "action": "ask", "who": "human",
-    "argv": ["tool", "apply", "report.txt", "protected-cfg.txt", "--json", "--go"],
+    "argv": ["/home/me/bin/tool", "apply", "report.txt", "protected-cfg.txt", "--json", "--go"],
     "afterSeconds": null,
-    "why": "a person must confirm at a terminal: protected-cfg.txt"
+    "why": "a person must confirm at a terminal: protected-cfg.txt",
+    "cwd": "/home/me/work"
   }
 }
 ```
@@ -129,28 +134,38 @@ next: <action> [argv…]  (<why>)
 |---|---|
 | `action` | `done` (nothing left to do), `run` (run `argv` now), `wait` (run `argv` again after `afterSeconds`), `ask` (a person’s decision: report and halt; `argv` is what the person would run), or `stop` (broken beyond the tool’s remedy: report and halt) |
 | `who` | `agent` or `human`: who may take the action (`ask` is always `human`) |
-| `argv` | the exact command as an array of strings, or `null`; in the text line it is shell-quoted for reading |
+| `argv` | the exact command as an array of strings, or `null`. `argv[0]` is the tool’s own script as it was invoked, made absolute (not resolved through symlinks, so an npm-linked bin stays its bin path), never a bare name looked up on `PATH`. In the text line it is shell-quoted for reading, and a token holding a control character is ANSI-C quoted (`$'…'`), so the line is always one line |
 | `afterSeconds` | a positive integer for `wait`, otherwise `null` |
-| `why` | one line of prose, the only prose in the object |
+| `why` | one line of prose with no control characters, the only prose in the object |
+| `cwd` | the absolute directory the run happened in: run `argv` from here, since its paths may be relative. The text line has no room for it: from text output, run the command from the directory you ran the tool in |
+
+The absolute `argv[0]` and the `cwd` field are **provisional (pilot)**: they
+landed with the 0.2.0 gate fixes and are confirmed or revised by the pilot
+adoption.
 
 Four rules hold for every tool on the contract:
 
 1. **One pure `nextAction()` is the single source of `next`**, as `verdict()`
    is of verdicts. It reads the finished items; it never re-probes the world.
 
-2. **`next.argv` never carries a confirmation or override flag** — `--yes`,
-   `--force`, any `--allow-*` or `--i-am-*`, or `-y`. If going further needs
-   one, the action is `ask`. A hint can never talk an agent past a gate.
+2. **`next.argv` never carries a confirmation or override flag** — any
+   `--yes*` or `--force*` (`--force-with-lease`, `--yes-really`),
+   `--assume-yes`, `--allow`, `--allow=*`, `--allow-*`, `--i-am-*` (long
+   forms in any case, with or without `=value`), `-y` or `-Y` alone or
+   grouped, and any flag the tool declares in `EXTRA_OVERRIDE_FLAGS`. If going
+   further needs one, the action is `ask`. A hint can never talk an agent
+   past a gate.
 
 3. **`next` composes with the dry-run gate.** The runtime’s
    `defaultNextAction()` advises `run` with the same command plus `--go` after
    a clean dry run; `ask` after a dry run with findings, or one whose command
    carried an override flag (with no `argv`, since `next` will not repeat
    it); `done` after a dry run where nothing would change, a `--go` run, or a
-   read-only `inspect`; and `stop` when an item failed. The skeleton’s
+   read-only `inspect`; and `stop` when an item failed, in any kind of run.
+   `--go` goes before a `--` terminator, never after it. The skeleton’s
    `nextAction()` adds its confirmation path on top: a protected target in a
    dry run, or one left unconfirmed under `--go` for want of a TTY, advises
-   `ask`.
+   `ask` (with no `argv` when the command carried an override flag).
 
 4. **`next` never contradicts the exit code**, which stays authoritative. Exit
    `0` allows `done`, `run`, `wait`, or `ask`; exit `1` allows any action;
@@ -171,7 +186,7 @@ what it would do and changes nothing. `--go` performs it. A read-only command
 | `0` | all items ok (skips are not failures) |
 | `1` | partial — at least one item warned, refused, or failed |
 | `2` | usage error (unknown flag/command, missing argument, bad mode combo) |
-| `3` | could not run to completion — an environment error (a required binary or config is missing/unreadable) or an internal error (an uncaught exception, including a `next` that breaks rule 2 or 4) |
+| `3` | could not run to completion — an environment error (a required binary or config is missing/unreadable) or an internal error (an uncaught exception or unhandled rejection, from `main()`, a timer, or a stream, including a `next` that breaks rule 2 or 4). An error while the module loads — a syntax error, or a top-level use of a fence name above the fence — happens before the fence can catch it, and Node exits `1` |
 
 **The TTY rule.** No interactive prompt is ever issued unless
 `process.stdin.isTTY`. A step that would prompt **refuses** — with an explicit
@@ -219,10 +234,11 @@ CLAUDE.md                     the agent-facing usage block, ready to keep
 LICENSE                       MIT © Danniel T. Gaidula
 ```
 
-Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the six
+Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the seven
 spots: the environment check, which targets need confirmation, the `inspect`
-report, the `apply` mutation, which commands mutate (`MUTATING_COMMANDS`), and
-the next-action policy (`nextAction()`). Leave the runtime fence alone.
+report, the `apply` mutation, which commands mutate (`MUTATING_COMMANDS`), the
+tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), and the next-action policy
+(`nextAction()`). Leave the runtime fence alone.
 
 ## The test suite
 
@@ -252,6 +268,14 @@ scaffolded tool. It locks the contract:
   path, and a patched runtime that does it end to end exits 3 with nothing on
   stdout. Rule 4 and the fixed shape of `next` likewise.
 
+- the 0.2.0 gate regressions: a 1,500-item report through a slow pipe
+  arrives whole; a control character in a filename never breaks a line,
+  forges a `next:` line, or trips the guard; the y/N prompt confirms on `y`
+  (injected streams); a throw from a timer, a floating promise, or a stream
+  exits 3; `next.argv` obeyed verbatim from `next.cwd` applies, `--`
+  included; any failed item advises `stop`; every override-flag class and a
+  declared `EXTRA_OVERRIDE_FLAGS` entry is blocked.
+
 - `--help` prints the header, not code.
 
 - a **symlinked invocation still runs `main()`** — the entry guard in the fence.
@@ -269,14 +293,39 @@ npm test      # node --test — runs the skeleton suite and the scaffolder suite
 ## Adopting the contract in an existing tool
 
 The shortest path: paste the runtime fence from `skeleton/tool.mjs` at the
-bottom of the tool, unedited, and write the three things it asks for —
-`MUTATING_COMMANDS`, a `nextAction()` policy (start from
+bottom of the tool, unedited, and write the four things it asks for —
+`MUTATING_COMMANDS`, `EXTRA_OVERRIDE_FLAGS` (the tool’s own override flags,
+often `[]`; below), a `nextAction()` policy (start from
 `defaultNextAction()`, or return `null` for no advice), and a `main()` that
 builds the items and ends with
-`process.exit(report({ command, effect, items, next, mode }))`. The fence
+`process.exitCode = report({ command, effect, items, next, mode })` — not
+`process.exit(report(…))`, which cuts a large report off mid-pipe. The fence
 brings the renderer, the `next` guard, the exit codes, `--help`, `--version`,
-and the entry guard with it. It carries its own namespaced imports, so it
-never collides with the tool’s.
+and the entry guard with it.
+
+**Names the fence owns.** Its imports are namespaced (`runtimeFs`,
+`runtimePath`, `runtimeUrl`), but its other top-level names are not:
+`CONTRACT`, `SCRIPT_PATH`, `TOOL_NAME`, `GLYPH`, `glyph`, `summarize`,
+`exitCodeFor`, `effectFor`, `NEXT_ACTIONS`, `NEXT_KEYS`, `ACTIONS_FOR_EXIT`,
+`OVERRIDE_FLAGS`, `OVERRIDE_PREFIXES`, `isOverrideFlag`, `nextStep`,
+`rerunArgv`, `count`, `listNames`, `defaultNextAction`, `assertSafeNext`,
+`CONTROL_CHARS`, `escapeControl`, `printable`, `shellQuote`, `nextLine`,
+`VERDICT_WIDTH`, `SUMMARY_WIDTH`, `summaryLine`, `briefLine`, `jsonItem`,
+`report`, `outputMode`, `usageError`, `environmentError`, `helpText`,
+`readVersion`, and `__entry`. A 0.1.0 tool already declares several of them
+(`SCRIPT_PATH`, `TOOL_NAME`, `glyph`, `report`, …): delete the tool’s own
+copies before pasting, or the module fails to load with a redeclaration
+error. And never use a fence name at the top level above the fence: the
+fence’s `const`s are not initialised until it runs, so that is a
+temporal-dead-zone error at load time (exit 1, before the fence can catch
+anything). Inside functions they are fine.
+
+**Override flags.** The guard blocks the contract’s override flags (rule 2)
+and every flag in the tool’s `EXTRA_OVERRIDE_FLAGS` — list there any other
+flag that confirms or overrides a gate (`--overwrite`, `--unsafe`). Give an
+override flag no short alias other than `-y`: the guard knows no other short
+form unless it is declared, and it leaves `-f` alone because tools use
+`-f <file>`. An older tool whose `-f` means force lists `'-f'` there.
 
 What the fence cannot do for you:
 
@@ -321,9 +370,15 @@ What the fence cannot do for you:
    const mode = outputMode({ ...values, brief: values.brief || values.summary });
    ```
 
-   Aliases are input only. Whatever `next.argv` says must run as written, so
-   a policy that re-runs the caller’s own argv drops `--dry-run` before it
-   appends `--go`.
+   Aliases are input only. Whatever `next.argv` says must run as written, and
+   the default policy re-runs the caller’s own argv with `--go` added, which
+   the `--dry-run`/`--go` check above would refuse. So filter the argv that
+   `main()` hands to `nextAction()`:
+
+   ```js
+   const argv = process.argv.slice(2).filter((a) => a !== '--dry-run');
+   const next = nextAction({ command, items, effect, state: null, argv });
+   ```
 
 4. **Exit-code dialects are an open item.** Some existing tools exit 2 on a
    refusal, where the contract keeps 2 for usage errors and a refusal is 1;

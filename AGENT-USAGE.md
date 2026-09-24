@@ -25,10 +25,10 @@ the command name). `new-tool` already drops it into every scaffolded tool’s
 Every run ends with one piece of advice: the `next:` line, or the `next` object in `--json`.
 
 ```
-next: run <tool> apply a.txt --go  (dry run clean: 1 item would change)
+next: run /path/to/<tool> apply a.txt --go  (dry run clean: 1 item would change)
 ```
 
-- **`run`** — run exactly that command, then read its `next` in turn. In `--json`, take the `argv` array as given; never rebuild or re-quote it.
+- **`run`** — run exactly that command, then read its `next` in turn. In `--json`, take the `argv` array as given — `argv[0]` is the tool’s own absolute path — and run it from `next.cwd`; never rebuild or re-quote it. From text output, run the line’s command from the directory you ran the tool in.
 
 - **`wait`** — run the command again after `afterSeconds`.
 
@@ -40,4 +40,4 @@ next: run <tool> apply a.txt --go  (dry run clean: 1 item would change)
 
 - **No `next:` line** (`"next": null` in `--json`) — no advice; follow your runbook.
 
-Obey `run` and `wait` only when `who` is `agent`; anything else is a halt. `next` never carries `--yes`, `--force`, or any `--allow-*` or `--i-am-*` flag, and it never contradicts the exit code. **When a runbook and `next` disagree, the runbook wins** — follow the runbook, and report the disagreement as a finding.
+Obey `run` and `wait` only when `who` is `agent`; anything else is a halt. `next` never carries an override flag — any `--yes*`, `--force*`, `--assume-yes`, `--allow`, `--allow-*`, or `--i-am-*` flag, `-y`, or one the tool declares — and it never contradicts the exit code. **When a runbook and `next` disagree, the runbook wins** — follow the runbook, and report the disagreement as a finding.
