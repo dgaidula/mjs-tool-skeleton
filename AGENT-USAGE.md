@@ -25,13 +25,13 @@ the command name). `new-tool` already drops it into every scaffolded tool’s
 Every run ends with one piece of advice: the `next:` line, or the `next` object in `--json`.
 
 ```
-next: run /usr/local/bin/node /path/to/<tool> apply a.txt --brief --go  (dry run clean: 1 item would change)
+next: run cd /path/to/work && /usr/local/bin/node /path/to/<tool> apply a.txt --brief --go  (dry run clean: 1 item would change)
 next: ask  (dry run: review the 1 finding before --go)
 ```
 
-- **`run`** — run exactly that command, then read its `next` in turn. In `--json`, take the `argv` array as given (`argv[0]` is node, `argv[1]` the tool’s own script) and run it from `next.cwd`; never rebuild or re-quote it. From text output, run the line’s command from the directory you ran the tool in; if a token is shown as `$'…'`, take the `argv` from `--json` instead.
+- **`run`** — run exactly that command, then read its `next` in turn. The text line reads `next: run <command>  (<why>)`, and `<command>` starts with `cd <dir> &&`: paste `<command>` into a fresh shell as it stands, from any directory. If a token is shown as `$'…'`, take `argv` and `cwd` from `--json` instead. In `--json`, take the `argv` array as given (`argv[0]` is node, `argv[1]` the tool’s own script) and run it from `next.cwd`; never rebuild or re-quote it. A `run` can come at exit `1`: a tool may advise `--go` over findings when its `--go` holds them aside rather than acting on them (it moves them to a hold folder, say). Run it, and still quote back every non-`ok` line.
 
-- **`wait`** — run the command again after that many seconds. It is always a read-only poll.
+- **`wait`** — run the command again after that many seconds; its text line starts with `cd <dir> &&` too. It is always a read-only poll.
 
 - **`done`** — nothing is left for this tool to do. Report and finish. At exit `1` it means no further tool step, not success: report the findings.
 
@@ -43,4 +43,4 @@ next: ask  (dry run: review the 1 finding before --go)
 
 **Budgets.** At most 6 `run` steps per procedure, unless the runbook sets another number; past it, halt and report. `wait` has no cycle limit: the tool is the stuck detector (it turns a stuck state into `ask`), and the runbook procedure sets how long, in wall-clock time, you may wait.
 
-**The runbook can only hold you back.** A runbook can halt you where `next` says `run`; nothing but a person carries you past `ask` or `stop`. Report any disagreement as a finding. `next` never carries an override flag — any `--yes*`, `--force*`, `--assume-yes`, `--allow`, `--allow-*`, or `--i-am-*` flag, `-y`, or one the tool declares — and it never contradicts the exit code.
+**The runbook can only hold you back.** A runbook can halt you where `next` says `run`; nothing but a person carries you past `ask` or `stop`. Report any disagreement as a finding. `next` never carries an override flag — any `--yes*`, `--force*`, `--assume-yes`, `--allow`, `--allow-*`, or `--i-am-*` flag, `-y`, or one the tool declares — and it never contradicts the exit code. Advice can only go straight to `--go` on what you just previewed: a `run` that carries `--go` repeats the dry run you just ran, with `--go` added, and a `run` into another command carries no `--go`.

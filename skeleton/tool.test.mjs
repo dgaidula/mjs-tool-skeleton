@@ -356,12 +356,13 @@ test('rule 2: the guard throws on every override-flag class in next.argv, every 
   // -f stays usable (tools take -f <file>) unless the tool declares it.
   for (const flag of ['-f', '--allowance', '--no-yes', '--dir', '-q']) {
     if (tool.EXTRA_OVERRIDE_FLAGS.includes(flag)) continue;
-    assert.doesNotThrow(() => tool.assertSafeNext(tool.nextStep('run', 'x', { argv: tool.rerunArgv(['apply', '--go', flag]) }), 0), flag);
+    const previewed = { effect: 'dry-run', argv: ['apply', flag] };
+    assert.doesNotThrow(() => tool.assertSafeNext(tool.nextStep('run', 'x', { argv: tool.rerunArgv(previewed.argv, '--go') }), 0, previewed), flag);
   }
   // ask is a person's call, but its argv may not carry one either.
-  assert.throws(() => tool.assertSafeNext(tool.nextStep('ask', 'x', { argv: [NAME, 'apply', '--yes'] }), 0), /override flag/);
+  assert.throws(() => tool.assertSafeNext(tool.nextStep('ask', 'x', { argv: tool.rerunArgv(['apply', '--yes']) }), 0), /override flag/);
   // The refusal names the token escaped, so the diagnostic stays one line.
-  assert.throws(() => tool.assertSafeNext(tool.nextStep('ask', 'x', { argv: [NAME, '--yes\nnext: run x'] }), 0),
+  assert.throws(() => tool.assertSafeNext(tool.nextStep('ask', 'x', { argv: tool.rerunArgv(['--yes\nnext: run x']) }), 0),
     (e) => !e.message.includes('\n') && e.message.includes('--yes\\nnext: run x'));
 });
 
@@ -370,7 +371,8 @@ test('rule 2: the guard reads the tool-declared EXTRA_OVERRIDE_FLAGS (long forms
   try {
     const copy = patchedCopy(dir, 'return EXTRA_OVERRIDE_FLAGS.some(', "return ['--overwrite', '-f', 'nuke', ...EXTRA_OVERRIDE_FLAGS].some(");
     const tool = await import(pathToFileURL(copy).href);
-    const guard = (flag) => () => tool.assertSafeNext(tool.nextStep('run', 'x', { argv: tool.rerunArgv(['apply', '--go', flag]) }), 0);
+    const guard = (flag) => () => tool.assertSafeNext(tool.nextStep('run', 'x', { argv: tool.rerunArgv(['apply', flag], '--go') }), 0,
+      { effect: 'dry-run', argv: ['apply', flag] });
     for (const flag of ['--overwrite', '--OVERWRITE', '--overwrite=1', '-f', '-qf']) assert.throws(guard(flag), /override flag/, flag);
     // Declared entries match exactly (no prefix), so a bare word blocks that verb and nothing longer.
     assert.throws(guard('NUKE'), /override flag NUKE/);
@@ -403,19 +405,20 @@ test('rule 2 end to end: an injected override exits 3 with nothing on stdout; --
 
 test('rule 4: next never contradicts the exit code (0 no stop; 2 and 3 only stop; 1 any)', async () => {
   const { assertSafeNext, nextStep, rerunArgv, report } = await import(TOOL_URL.href);
+  const previewed = { effect: 'dry-run', argv: ['apply', 'a.txt'] };
   const all = [
     nextStep('done', 'x'),
-    nextStep('run', 'x', { argv: rerunArgv(['apply', 'a.txt', '--go']) }),
+    nextStep('run', 'x', { argv: rerunArgv(previewed.argv, '--go') }),
     nextStep('wait', 'x', { argv: rerunArgv(['status']), afterSeconds: 60 }),
     nextStep('ask', 'x'),
     nextStep('stop', 'x'),
   ];
-  for (const next of all) assert.doesNotThrow(() => assertSafeNext(next, 1));
-  for (const next of all.slice(0, 4)) assert.doesNotThrow(() => assertSafeNext(next, 0)); // ask included
-  assert.throws(() => assertSafeNext(all[4], 0), /contradicts exit 0/);
+  for (const next of all) assert.doesNotThrow(() => assertSafeNext(next, 1, previewed));
+  for (const next of all.slice(0, 4)) assert.doesNotThrow(() => assertSafeNext(next, 0, previewed)); // ask included
+  assert.throws(() => assertSafeNext(all[4], 0, previewed), /contradicts exit 0/);
   for (const exit of [2, 3]) {
-    assert.doesNotThrow(() => assertSafeNext(all[4], exit));
-    for (const next of all.slice(0, 4)) assert.throws(() => assertSafeNext(next, exit), /contradicts exit/);
+    assert.doesNotThrow(() => assertSafeNext(all[4], exit, previewed));
+    for (const next of all.slice(0, 4)) assert.throws(() => assertSafeNext(next, exit, previewed), /contradicts exit/);
   }
   // report() derives the exit code from the items itself, so the check cannot be skipped.
   const stopOnOk = { command: 'apply', effect: 'applied', items: [OK_ITEM], next: all[4], mode: 'brief' };
@@ -454,7 +457,7 @@ test('guard: next has the fixed shape; who and cwd are derived, never chosen', a
   }
 });
 
-test('run and wait re-invoke this tool: node, then this script; any other argv is refused', async () => {
+test('run, wait and ask re-invoke this tool: node, then this script; any other argv is refused', async () => {
   const { assertSafeNext, nextStep, rerunArgv } = await import(TOOL_URL.href);
   assert.deepEqual(rerunArgv(['apply', 'a.txt']), [NODE, TOOL_PATH, 'apply', 'a.txt']);
   for (const argv of [
@@ -463,9 +466,12 @@ test('run and wait re-invoke this tool: node, then this script; any other argv i
   ]) {
     assert.throws(() => assertSafeNext(nextStep('run', 'x', { argv }), 0), /re-invokes this tool/, argv.join(' '));
     assert.throws(() => assertSafeNext(nextStep('wait', 'x', { argv, afterSeconds: 5 }), 0), /re-invokes this tool/, argv.join(' '));
+    assert.throws(() => assertSafeNext(nextStep('ask', 'x', { argv }), 0), /ask re-invokes this tool/, argv.join(' '));
   }
-  // ask's argv is what a person would review, so it may name anything but an override.
-  assert.doesNotThrow(() => assertSafeNext(nextStep('ask', 'x', { argv: ['other-tool', 'prune'] }), 0));
+  // ask's argv is what a person would review: this tool's own command, or none.
+  assert.throws(() => assertSafeNext(nextStep('ask', 'x', { argv: ['other-tool', 'prune'] }), 0), /ask re-invokes this tool/);
+  assert.doesNotThrow(() => assertSafeNext(nextStep('ask', 'x', { argv: rerunArgv(['apply', 'a.txt', '--go']) }), 0));
+  assert.doesNotThrow(() => assertSafeNext(nextStep('ask', 'x'), 0));
 });
 
 test('wait never carries --go or a mutating command (a poll never mutates)', async () => {
@@ -485,24 +491,31 @@ test('wait never carries --go or a mutating command (a poll never mutates)', asy
   }
 });
 
-test('next: line quotes argv for reading and shows the wait', async () => {
+test('next: line quotes argv for reading and shows the wait; run and wait lead with cd <cwd> &&', async () => {
   const { nextLine, nextStep } = await import(TOOL_URL.href);
-  assert.equal(nextLine(nextStep('done', 'nothing to apply')), 'next: done  (nothing to apply)');
+  // A fixed cwd keeps each line exact wherever the suite runs.
+  const at = (next, cwd = '/work') => nextLine({ ...next, cwd });
+  assert.equal(at(nextStep('done', 'nothing to apply')), 'next: done  (nothing to apply)');
   // A tab needs no escape, but a token holding one is quoted; a bidi control is ANSI-C quoted.
-  assert.equal(nextLine(nextStep('run', 'x', { argv: ['t', 'a\tb'] })), "next: run t 'a\tb'  (x)");
-  assert.equal(nextLine(nextStep('run', 'x', { argv: ['t', 'a\u202eb'] })), "next: run t $'a\\u202eb'  (x)");
+  assert.equal(at(nextStep('run', 'x', { argv: ['t', 'a\tb'] })), "next: run cd /work && t 'a\tb'  (x)");
+  assert.equal(at(nextStep('run', 'x', { argv: ['t', 'a\u202eb'] })), "next: run cd /work && t $'a\\u202eb'  (x)");
   assert.equal(
-    nextLine(nextStep('run', 'clean', { argv: ['t', 'apply', 'my file.txt', "it's", '--go'] })),
-    "next: run t apply 'my file.txt' 'it'\\''s' --go  (clean)",
+    at(nextStep('run', 'clean', { argv: ['t', 'apply', 'my file.txt', "it's", '--go'] })),
+    "next: run cd /work && t apply 'my file.txt' 'it'\\''s' --go  (clean)",
   );
   assert.equal(
-    nextLine(nextStep('wait', 'in flight', { argv: ['t', 'status'], afterSeconds: 900 })),
-    'next: wait 900s t status  (in flight)',
+    at(nextStep('wait', 'in flight', { argv: ['t', 'status'], afterSeconds: 900 })),
+    'next: wait 900s cd /work && t status  (in flight)',
   );
   // A leading = is quoted (zsh expands =cmd); one inside a token is not.
-  assert.equal(nextLine(nextStep('run', 'x', { argv: ['t', '=ls', 'a=b'] })), "next: run t '=ls' a=b  (x)");
+  assert.equal(at(nextStep('run', 'x', { argv: ['t', '=ls', 'a=b'] })), "next: run cd /work && t '=ls' a=b  (x)");
   // A control character is ANSI-C quoted, so the line stays one line.
-  assert.equal(nextLine(nextStep('run', 'x', { argv: ['t', "it's\na\\b"] })), "next: run t $'it\\'s\\na\\\\b'  (x)");
+  assert.equal(at(nextStep('run', 'x', { argv: ['t', "it's\na\\b"] })), "next: run cd /work && t $'it\\'s\\na\\\\b'  (x)");
+  // The cwd is quoted by the same rules, and it is the next object's own, not this process's.
+  assert.equal(at(nextStep('run', 'x', { argv: ['t', 'status'] }), "/Dan's work dir"), "next: run cd '/Dan'\\''s work dir' && t status  (x)");
+  assert.equal(at(nextStep('wait', 'x', { argv: ['t', 'status'], afterSeconds: 5 }), '/w\nx'), "next: wait 5s cd $'/w\\nx' && t status  (x)");
+  // A person's call keeps its bare command: they are in the directory already.
+  assert.equal(nextLine({ ...nextStep('ask', 'x', { argv: ['t', 'apply', '--go'] }), cwd: '/work' }, 'human'), 'next: your call: t apply --go  (x)');
 });
 
 test('json: state appears only when a tool provides one', async () => {
@@ -886,6 +899,119 @@ test('the runtime names a missing or misshapen hook as the module loads (exit 3,
       assert.match(r.stderr, new RegExp(`^error: contract mjs-tool/2: declare ${hook} as `, 'm'), hook);
       await assert.rejects(import(pathToFileURL(file).href), new RegExp(`declare ${hook} as `), hook); // imported, it throws
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- the pre-freeze changes (2026-09-24) ------------------------------------
+
+test('a text-mode run line runs as pasted into a fresh shell from another directory, in every text mode', () => {
+  const dir = tmp();
+  try {
+    // A working directory and a script path that both need quoting.
+    const work = path.join(dir, "Dan's work dir");
+    mkdirSync(work);
+    const f = path.join(work, 'a.txt');
+    writeFileSync(f, 'x');
+    const copy = patchedCopy(work, ...AUTO_RUN);
+    for (const mode of [['--brief'], ['--quiet'], []]) {
+      utimesSync(f, new Date(1e12), new Date(1e12));
+      const dry = spawnSync(NODE, [copy, 'apply', 'a.txt', ...mode], { cwd: work, encoding: 'utf8', timeout: 15000 });
+      const line = dry.stdout.trimEnd().split('\n').at(-1);
+      assert.match(line, /^next: run cd '.+' && .+ {2}\(dry run clean: 1 item would change\)$/, line);
+      const command = line.slice('next: run '.length, line.lastIndexOf('  ('));
+      // Pasted as it stands into a fresh /bin/sh, from a directory with no a.txt in it.
+      const obeyed = spawnSync('/bin/sh', ['-c', command], { cwd: dir, encoding: 'utf8', timeout: 15000 });
+      assert.equal(obeyed.status, 0, `${command}\n${obeyed.stderr}`);
+      const out = obeyed.stdout.trimEnd().split('\n');
+      // The applied run: its own advice, and a summary with no dry-run suffix.
+      assert.equal(out.at(-1), 'next: done  (applied: 1 changed)', mode.join(''));
+      assert.equal(out.at(-2), 'summary: ok=1 warn=0 skip=0 refuse=0 fail=0', mode.join(''));
+      assert.ok(statSync(f).mtimeMs > 1e12, mode.join(''));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run goes straight to --go only on the command just previewed; a step into another command carries no --go', async () => {
+  const { assertSafeNext, nextStep, rerunArgv } = await import(TOOL_URL.href);
+  const previewed = { effect: 'dry-run', argv: ['apply', 'a.txt', '--brief'] };
+  const run = (argv, current = previewed) => () => assertSafeNext(nextStep('run', 'x', { argv }), 0, current);
+  // Allowed: the same command, positionals and flags, plus --go (before any --).
+  assert.doesNotThrow(run(rerunArgv(previewed.argv, '--go')));
+  const ended = { effect: 'dry-run', argv: ['apply', '--brief', '--', 'a.txt'] };
+  assert.doesNotThrow(run(rerunArgv(ended.argv, '--go'), ended));
+  // Allowed: a step into another command of this tool, or the confirming dry run, with no --go.
+  assert.doesNotThrow(run(rerunArgv(['inspect', 'a.txt', '--brief'])));
+  assert.doesNotThrow(run(rerunArgv(['prune', 'a.txt', '--brief'])));
+  assert.doesNotThrow(run(rerunArgv(['apply', 'a.txt', '--brief']), { effect: 'applied', argv: ['apply', 'a.txt', '--brief', '--go'] }));
+  // Refused: another command's --go, or this one with its positionals or flags changed.
+  for (const args of [
+    ['prune', 'a.txt', '--brief', '--go'], // another command
+    ['apply', 'b.txt', '--brief', '--go'], // another positional
+    ['apply', 'a.txt', 'b.txt', '--brief', '--go'], // one more
+    ['apply', '--brief', '--go'], // one fewer
+    ['apply', 'a.txt', '--go'], // a flag dropped
+    ['apply', 'a.txt', '--brief', '--skip-warn', '--go'], // a flag of the policy's own added
+    ['apply', 'a.txt', '--brief', '--go=1'], // --go spelled another way
+    ['apply', 'a.txt', '--brief', '--go', '--go'],
+  ]) assert.throws(run(rerunArgv(args)), /only on the command just previewed/, args.join(' '));
+  // Order counts: the same positionals swapped (a source and a destination, say) are another command.
+  const pair = { effect: 'dry-run', argv: ['apply', 'a.txt', 'b.txt'] };
+  assert.throws(run(rerunArgv(['apply', 'b.txt', 'a.txt'], '--go'), pair), /only on the command just previewed/);
+  // Refused: --go after a run that previewed nothing, or with no run to check it against.
+  assert.throws(run(rerunArgv(['apply', 'a.txt', '--go']), { effect: 'applied', argv: ['apply', 'a.txt', '--go'] }), /only straight after a dry run.*was applied/);
+  assert.throws(run(rerunArgv(['inspect', 'a.txt', '--go']), { effect: 'read-only', argv: ['inspect', 'a.txt'] }), /only straight after a dry run.*was read-only/);
+  assert.throws(() => assertSafeNext(nextStep('run', 'x', { argv: rerunArgv(previewed.argv, '--go') }), 0), /this run was not given/);
+  // ask is a person's call, so it may put another command's --go in front of them.
+  assert.doesNotThrow(() => assertSafeNext(nextStep('ask', 'x', { argv: rerunArgv(['prune', 'a.txt', '--go']) }), 0, previewed));
+});
+
+test('report() checks a run --go against the argv it is handed', async () => {
+  const { report, nextStep, rerunArgv } = await import(TOOL_URL.href);
+  const capture = (args) => {
+    const write = process.stdout.write;
+    let out = '';
+    process.stdout.write = (chunk) => { out += chunk; return true; };
+    try { report(args); } finally { process.stdout.write = write; }
+    return out;
+  };
+  const argv = ['apply', 'a.txt', '--brief'];
+  const base = { command: 'apply', effect: 'dry-run', items: [OK_ITEM], mode: 'brief', argv };
+  assert.match(capture({ ...base, next: nextStep('run', 'x', { argv: rerunArgv(argv, '--go') }) }), /^next: run cd .+ apply a\.txt --brief --go {2}\(x\)$/m);
+  assert.throws(() => capture({ ...base, next: nextStep('run', 'x', { argv: rerunArgv(['prune', 'a.txt', '--brief', '--go']) }) }),
+    /only on the command just previewed/);
+  assert.throws(() => capture({ ...base, effect: 'applied', next: nextStep('run', 'x', { argv: rerunArgv(argv, '--go') }) }),
+    /only straight after a dry run/);
+});
+
+test('end to end: a policy that chains into another command\'s --go exits 3; a dry-run step into it runs, and so does a tool whose report() gets no argv', () => {
+  const dir = tmp();
+  try {
+    const tool = (name, policy) => withRuntime(dir, [
+      "const MUTATING_COMMANDS = new Set(['apply', 'other']);",
+      "const AUTO_RUN_COMMANDS = new Set(['apply']);",
+      'const EXTRA_OVERRIDE_FLAGS = [];',
+      `function nextAction(run) { ${policy} }`,
+      // A minimal tool whose report() call hands no argv, as one that adopted the contract before it could.
+      "async function main() { const argv = process.argv.slice(2); const effect = effectFor(argv[0], argv.includes('--go'));",
+      "  const items = [{ path: 'a', name: 'a', verdict: 'ok', summary: 's', reason: '', changed: effect === 'applied', data: null }];",
+      "  report({ command: argv[0], effect, items, next: nextAction({ command: argv[0], items, effect, state: null, argv }), mode: 'json' }); }",
+    ].join('\n'), name);
+    const start = (file, args) => spawnSync(NODE, [file, ...args], { cwd: dir, encoding: 'utf8', timeout: 15000 });
+    const chained = start(tool('chain-go.mjs', "return nextStep('run', 'chain', { argv: rerunArgv(['other', 'a', '--go']) });"), ['apply', 'a']);
+    assert.equal(chained.status, 3);
+    assert.equal(chained.stdout, '');
+    assert.match(chained.stderr, /^error: unsafe next: run carries --go only on the command just previewed/m);
+    const stepped = start(tool('chain-dry.mjs', "return nextStep('run', 'chain', { argv: rerunArgv(['other', 'a']) });"), ['apply', 'a']);
+    assert.equal(stepped.status, 0, stepped.stderr);
+    assert.deepEqual(JSON.parse(stepped.stdout).next.argv.slice(2), ['other', 'a']);
+    const { next } = JSON.parse(start(tool('plain.mjs', 'return defaultNextAction(run);'), ['apply', 'a']).stdout);
+    assert.deepEqual([next.action, next.argv.slice(2)], ['run', ['apply', 'a', '--go']]);
+    const applied = JSON.parse(obey(next).stdout);
+    assert.deepEqual([applied.effect, applied.next.action], ['applied', 'done']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -134,11 +134,14 @@ A command is printed only where its reader may take it. `--brief` and
 `--quiet` are read by agents, so an `ask` there is bare: an agent is never
 handed a command at a halt. The default human mode is read by a person, so
 it shows an `ask` as that person’s call, with the command they would run.
+A `run` or `wait` line is self-sufficient: it leads with `cd <cwd> &&`, so
+an agent can paste it into a fresh shell and it runs from the right
+directory.
 
 | action | `--brief`, `--quiet` | human (default) |
 |---|---|---|
-| `run` | `next: run <command>  (<why>)` | the same |
-| `wait` | `next: wait <n>s <command>  (<why>)` | the same |
+| `run` | `next: run cd <cwd> && <command>  (<why>)` | the same |
+| `wait` | `next: wait <n>s cd <cwd> && <command>  (<why>)` | the same |
 | `done` | `next: done  (<why>)` | the same |
 | `ask` | `next: ask  (<why>)` | `next: your call: <command>  (<why>)`, or `next: your call  (<why>)` with no command |
 | `stop` | `next: stop  (<why>)` | the same |
@@ -147,10 +150,10 @@ it shows an `ask` as that person’s call, with the command they would run.
 |---|---|
 | `action` | `done` (nothing left for this tool to do; at exit `1` that means no further tool step, not success), `run` (run `argv` now), `wait` (run `argv` again after `afterSeconds`), `ask` (a person’s decision: report and halt; `argv` is what the person would run, or `null`), or `stop` (broken beyond the tool’s remedy: report and halt) |
 | `who` | derived from the action, never chosen: `agent` for `run`, `wait` and `done`; `human` for `ask` and `stop` |
-| `argv` | the exact command as an array of strings, or `null` (always `null` for `done` and `stop`). For `run` and `wait` it re-invokes this tool: `argv[0]` is the node running it (`process.execPath`) and `argv[1]` the tool’s own script as it was invoked, made absolute (not resolved through symlinks, so an npm-linked bin stays its bin path), so it runs without the executable bit and without a `PATH` lookup. A handoff to another tool is `done`, with the next step in the runbook. In the text line it is shell-quoted for reading, and a token holding a control character is ANSI-C quoted (`$'…'`), so the line is always one line. Its `\x` escapes work in any bash or zsh; its `\u` escapes (C1 controls, line separators, bidi controls) need bash 4.2 or later, or zsh, in a UTF-8 locale (macOS’s `/bin/bash` 3.2 prints them literally), so take `argv` from `--json` for such a token |
+| `argv` | the exact command as an array of strings, or `null` (always `null` for `done` and `stop`). For `run` and `wait`, and for an `ask` that carries one, it re-invokes this tool: `argv[0]` is the node running it (`process.execPath`) and `argv[1]` the tool’s own script as it was invoked, made absolute (not resolved through symlinks, so an npm-linked bin stays its bin path), so it runs without the executable bit and without a `PATH` lookup. A handoff to another tool is `done`, with the next step in the runbook. In the text line it is shell-quoted for reading, and a token holding a control character is ANSI-C quoted (`$'…'`), so the line is always one line. Its `\x` escapes work in any bash or zsh; its `\u` escapes (C1 controls, line separators, bidi controls) need bash 4.2 or later, or zsh, in a UTF-8 locale (macOS’s `/bin/bash` 3.2 prints them literally), so take `argv` from `--json` for such a token |
 | `afterSeconds` | a positive integer for `wait`, otherwise `null` |
 | `why` | one line of prose, the only prose in the object: `nextStep()` escapes any control character in it and clips it to 200 characters, and each name in it to 80 |
-| `cwd` | the process’s working directory at start, read once as the tool loads: run `argv` from here, since its paths may be relative. The text line has no room for it: from text output, run the command from the directory you ran the tool in |
+| `cwd` | the process’s working directory at start, read once as the tool loads: run `argv` from here, since its paths may be relative. A `run` or `wait` text line carries it as a leading `cd <cwd> &&`, quoted by the same rules as `argv`, so the line runs as pasted from any directory |
 
 `next` is `null` only in a tool that has not adopted the next-action layer
 (it still reports `--json`, `effect`, and honest exit codes, but gives no
@@ -186,15 +189,30 @@ Four rules hold for every tool on the contract:
    want of a TTY, advises `ask` (with no `argv` when the command carried an
    override flag).
 
+   Advice goes straight to `--go` only on what was just previewed: a `run`
+   that carries `--go` follows a dry run and repeats its command exactly (the
+   same command, positionals and flags) with `--go` added, as
+   `rerunArgv(argv, '--go')` builds it. A `run` into another command of the
+   tool is a read-only or dry-run step and carries no `--go`, as the
+   confirming dry run after an applied `--go` does. A tool’s own policy may
+   advise `run … --go` over findings (at exit `1`) when its `--go` form
+   structurally quarantines them, holding them aside rather than acting on
+   them (it moves warn-level items to a hold folder, say). The item lines
+   still show every finding; the judgment is that policy’s own, and the
+   default policy says `ask` on findings.
+
 4. **`next` never contradicts the exit code**, which stays authoritative. Exit
    `0` allows `done`, `run`, `wait`, or `ask`; exit `1` allows any action;
    exits `2` and `3` allow only `stop`.
 
 `assertSafeNext()` enforces rules 2 and 4 on every `next` before a byte is
 rendered, and the fixed shape with it: exactly the six fields; `who` as the
-action implies; an `argv` for `run` and `wait`, starting with this node and
-this tool’s script, and none for `done` and `stop`; a `wait` with no `--go`
-and no mutating command in its `argv` (it re-polls, so it never mutates);
+action implies; an `argv` for `run` and `wait`, and any `ask` `argv`,
+starting with this node and this tool’s script, and none for `done` and
+`stop`; a `run` with `--go` only as the `--go` of the dry run it follows
+(rule 3: `report()` hands the guard the run’s `effect` and `argv`); a
+`wait` with no `--go` and no mutating command in its `argv` (it re-polls,
+so it never mutates);
 `why` one line; `cwd` the start directory. A violation throws, so the run
 exits `3` and the tool’s own tests meet the violation first. Build `next`
 with `nextStep()`, which derives `who` and `cwd` and cleans `why`, rather
@@ -305,8 +323,8 @@ scaffolded tool. It locks the contract:
   `--i-am-*`, or `-y` in `next.argv` throws, in the guard and on the render
   path, and a patched runtime that does it end to end exits 3 with nothing on
   stdout. Rule 4 and the fixed shape of `next` likewise: `who` and `cwd`
-  derived, `run` and `wait` re-invoking the tool itself, `wait` never
-  carrying `--go` or a mutating command.
+  derived, `run`, `wait` and `ask` re-invoking the tool itself, `wait`
+  never carrying `--go` or a mutating command.
 
 - the 0.2.0 gate regressions: a 3,000-item report through a slow pipe
   arrives whole; a control character in a filename (each class, bidi
@@ -322,6 +340,14 @@ scaffolded tool. It locks the contract:
   working directory removed before or during the run cannot lose the report;
   a missing or misshapen hook fails by name as the module loads; `why` is
   escaped and clipped.
+
+- the pre-freeze changes: a text-mode `run` line pasted into a fresh
+  `/bin/sh` from another directory applies, in every text mode; an `ask`
+  `argv` that names another program is refused; a `run` goes to `--go`
+  only on the command just previewed (another command’s `--go`, changed
+  positionals or flags, or a `--go` after a run that was no dry run
+  throws; a dry-run step into another command runs), in the guard, through
+  `report()`, and end to end.
 
 - `--help` prints the header, not code.
 
@@ -345,12 +371,19 @@ checks as it loads — `MUTATING_COMMANDS`, `AUTO_RUN_COMMANDS` (usually an
 empty Set; below), `EXTRA_OVERRIDE_FLAGS` (the tool’s own override flags,
 often `[]`; below), a `nextAction()` policy (start from
 `defaultNextAction()`), and a `main()` that builds the items and ends with
-`report({ command, effect, items, next, mode })`. The runtime then exits with
-the report’s code once stdout has flushed. Drop any `process.exit(report(…))`,
-which cuts a large report off mid-pipe; a `process.exitCode = report(…)` left
-from an earlier adoption still works. The fence brings the renderer, the
-`next` guard, the exit codes, `--help`, `--version`, and the entry guard with
-it.
+`report({ command, effect, items, next, mode, argv })`, where `argv` is the
+argv it handed `nextAction()` (left out, it is the process’s own). The
+runtime then exits with the report’s code once stdout has flushed. Drop any
+`process.exit(report(…))`, which cuts a large report off mid-pipe; a
+`process.exitCode = report(…)` left from an earlier adoption still works. The
+fence brings the renderer, the `next` guard, the exit codes, `--help`,
+`--version`, and the entry guard with it.
+
+**Finish every write before the report.** The runtime exits once stdout has
+flushed; it never waits for the event loop to drain, since that would let an
+open handle hold the run. So await (or synchronously flush) every file write
+before `main()` calls `report()` or returns. An un-awaited async write,
+such as an append-mode logger’s closing line, is cut off.
 
 **Commands.** `command` is the verb as the tool’s user types it: one word, or
 a space-joined phrase for a subcommand (`staging prune`). `MUTATING_COMMANDS`
@@ -441,10 +474,13 @@ What the fence cannot do for you:
    Aliases are input only. Whatever `next.argv` says must run as written, and
    the default policy re-runs the caller’s own argv with `--go` added, which
    the `--dry-run`/`--go` check above would refuse. So normalise the argv that
-   `main()` hands to `nextAction()`: drop the explicit-default flags and spell
-   every `--go` alias as `--go`. The `wait` check looks for `--go` and for
-   mutating command words, so an alias left in place (or a mutating default
-   with no verb) would be invisible to it:
+   `main()` hands to `nextAction()`, and hand `report()` the same one: drop
+   the explicit-default flags and spell every `--go` alias as `--go`. The
+   `wait` check looks for `--go` and for mutating command words, so an alias
+   left in place (or a mutating default with no verb) would be invisible to
+   it; and the guard checks a `run`’s `--go` against the argv `report()`
+   is handed, so a tool that normalises for `nextAction()` alone exits `3`
+   on its first auto-run:
 
    ```js
    // drop --dry-run (and short forms like -n); spell every --go alias as --go
@@ -452,6 +488,7 @@ What the fence cannot do for you:
      .filter((a) => a !== '--dry-run' && a !== '-n')
      .map((a) => (a === '--apply' ? '--go' : a));
    const next = nextAction({ command, items, effect, state: null, argv });
+   report({ command, effect, items, next, mode, argv });
    ```
 
    A short form grouped with another flag (`-qn`) is not filtered; the re-run
@@ -463,11 +500,12 @@ What the fence cannot do for you:
    at it, export the names the tests import (as the skeleton’s `export` list
    does), and swap `inspect` and `apply` for one of its read-only and one of
    its mutating commands. That covers the guard (rules 2 and 4, the shape,
-   `run` and `wait` re-invoking the tool, `wait` never mutating), the
-   `next:` rendering and quoting, control characters, `state`, exit codes,
-   the uncaught and late errors, the open handle, the slow pipe, the removed
-   working directory, the hook check, `--help`, `--version`, and the
-   symlinked invocation. The rest pin the placeholder behaviour (the dry run
+   `run`, `wait` and `ask` re-invoking the tool, `wait` never mutating,
+   a `run`’s `--go` only on what was previewed), the `next:` rendering and
+   quoting (the pasted `run` line included), control characters, `state`,
+   exit codes, the uncaught and late errors, the open handle, the slow pipe,
+   the removed working directory, the hook check, `--help`, `--version`,
+   and the symlinked invocation. The rest pin the placeholder behaviour (the dry run
    and `--go`, the protected target and its y/N prompt, the exact `why`
    texts): write those afresh for the tool’s own commands.
 

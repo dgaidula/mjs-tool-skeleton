@@ -7,7 +7,36 @@
 Contract `mjs-tool/2`: a next-action layer, an explicit effect, and one shared
 runtime block. Additive for `--json` consumers; the text modes gain one line.
 Built on 2026-09-23, gated the same night, and frozen on 2026-09-24 after the
-pilot adoption and the round below.
+pilot adoption and the rounds below.
+
+Four changes after the final round (Dan’s approvals after the pilot rerun,
+2026-09-24):
+
+- **A text-mode `run` or `wait` line runs as pasted.** It reads
+  `next: run cd <cwd> && <command>  (why)` (and
+  `next: wait <n>s cd <cwd> && …`), the directory quoted by the same rules
+  as the command, so an agent can paste it into a fresh shell from any
+  directory; a test agent had run an advised command from the wrong one.
+  `--json` is unchanged (`argv` plus `cwd`), and the human-mode “your call”
+  line keeps its bare command. Item and summary lines are unchanged.
+
+- **An `ask` `argv` re-invokes the tool too**, as `run` and `wait` do, or
+  is `null`: the guard checks the same two head tokens.
+
+- **Advice goes straight to `--go` only on what was just previewed.** A `run`
+  that carries `--go` must follow a dry run and be exactly that dry run’s
+  argv with `--go` added (`rerunArgv(argv, '--go')`); a `run` into another
+  command of the tool is a read-only or dry-run step, with no `--go`.
+  `report()` takes the run’s `argv` (the one handed to `nextAction()`; left
+  out, the process’s own) and passes it with `effect` to `assertSafeNext()`,
+  as its new third argument.
+
+- Docs: a tool awaits (or synchronously flushes) every file write before
+  `main()` calls `report()` or returns, since the runtime exits once stdout
+  has flushed (a pilot tool’s un-awaited batch log lost its closing line in 5
+  of 5 runs); a tool’s own policy may advise `run … --go` over findings, at
+  exit `1`, when its `--go` form holds them aside rather than acting on them.
+  Tests: 48 → 52.
 
 The final round before the freeze (Dan’s decisions on the pilot, 2026-09-24):
 

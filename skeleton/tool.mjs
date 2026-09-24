@@ -365,11 +365,14 @@ async function main() {
   }
 
   const effect = effectFor(command, !!values.go);
-  const next = nextAction({ command, items, effect, state: null, argv: process.argv.slice(2) });
+  const argv = process.argv.slice(2);
+  const next = nextAction({ command, items, effect, state: null, argv });
   // The end of the run: the runtime exits with the reported code once stdout
-  // has flushed. Never process.exit() after output, which drops what a pipe
-  // has not yet taken.
-  report({ command, effect, items, next, mode });
+  // has flushed, so every file write is finished (awaited) before this line.
+  // Never process.exit() after output, which drops what a pipe has not yet
+  // taken. report() gets the argv nextAction() read, to check a run's --go
+  // against what this run previewed.
+  report({ command, effect, items, next, mode, argv });
 }
 
 export {
@@ -555,7 +558,10 @@ function defaultNextAction({ command, items, effect, argv }) {
 // Rules 2 and 4 (and the fixed shape), enforced on every `next` before it is
 // rendered. A violation throws, and the run exits 3: a tool cannot ship advice
 // that walks an agent past a gate, and its tests meet the violation first.
-function assertSafeNext(next, exit) {
+// `current` is the run the advice follows: its effect, and the argv it handed
+// nextAction(). report() passes it, so a run goes to --go only on what that
+// run just previewed; without it, no run may carry --go.
+function assertSafeNext(next, exit, current = {}) {
   const unsafe = (why) => { throw new Error(`unsafe next: ${why}`); };
   if (next === null) return;
   if (!next || typeof next !== 'object' || Array.isArray(next)) unsafe('nextAction() must return a next object or null');
@@ -571,14 +577,27 @@ function assertSafeNext(next, exit) {
   }
   if ((action === 'run' || action === 'wait') && argv === null) unsafe(`${action} needs an argv`);
   if ((action === 'done' || action === 'stop') && argv !== null) unsafe(`${action} carries no argv`);
-  // run and wait re-enter this tool and its own gates; a handoff to another
-  // tool is done, with the next step in the runbook.
+  // run, wait and any ask argv re-enter this tool and its own gates; a handoff
+  // to another tool is done, with the next step in the runbook.
   const head = selfArgv();
-  if ((action === 'run' || action === 'wait') && (argv[0] !== head[0] || argv[1] !== head[1])) {
+  if (argv !== null && (argv[0] !== head[0] || argv[1] !== head[1])) {
     unsafe(`${action} re-invokes this tool: argv starts with ${printable(head.join(' '))}`);
   }
   const flag = (argv || []).find(isOverrideFlag);
   if (flag !== undefined) unsafe(`argv carries the override flag ${printable(flag)}; a step that needs one is ask`);
+  if (action === 'run' && argv.slice(2).some((a) => a === '--go' || a.startsWith('--go='))) {
+    // Advice goes straight to --go only on what this run just previewed: the
+    // dry run's own argv with --go added, as rerunArgv(argv, '--go') builds it.
+    // A step into another command, or after a run that was no dry run, is a
+    // read-only or dry-run step, with no --go.
+    if (current.effect !== 'dry-run') {
+      unsafe(`run carries --go only straight after a dry run of the same command; this run was ${printable(current.effect ?? 'not given')}`);
+    }
+    const expected = Array.isArray(current.argv) ? rerunArgv(current.argv, '--go') : [];
+    if (argv.length !== expected.length || argv.some((a, i) => a !== expected[i])) {
+      unsafe("run carries --go only on the command just previewed: that dry run's argv with --go added, as rerunArgv(argv, '--go') builds it; a step into another command carries no --go");
+    }
+  }
   if (action === 'wait') {
     // wait re-polls, so it never mutates: no --go, and no mutating command,
     // matched as the same words in a row (command names may be phrases).
@@ -627,15 +646,17 @@ function shellQuote(token) {
 
 // The text form of `next`, the last line of every text mode, and always exactly
 // one line. A command is printed only where its reader may take it: run and
-// wait always; ask only for a person, in the default human mode, which says
+// wait always, led by `cd <cwd> &&` so the line runs as pasted from any
+// directory; ask only for a person, in the default human mode, which says
 // "your call" (--brief and --quiet print a bare ask, so an agent is never
 // handed a command at a halt); done and stop never. argv is quoted for
-// reading; --json carries the exact array.
+// reading; --json carries the exact array, with cwd beside it.
 function nextLine(next, mode) {
   const command = next.argv ? ` ${next.argv.map(shellQuote).join(' ')}` : '';
   const why = `  (${printable(next.why)})`;
-  if (next.action === 'run') return `next: run${command}${why}`;
-  if (next.action === 'wait') return `next: wait ${next.afterSeconds}s${command}${why}`;
+  const here = `cd ${shellQuote(next.cwd)} &&`;
+  if (next.action === 'run') return `next: run ${here}${command}${why}`;
+  if (next.action === 'wait') return `next: wait ${next.afterSeconds}s ${here}${command}${why}`;
   if (next.action === 'ask' && mode === 'human') return `next: your call${command && `:${command}`}${why}`;
   return `next: ${next.action}${why}`;
 }
@@ -681,10 +702,12 @@ let reportedExit = null;
 // takes 64 KiB at a time on macOS), so an open handle cannot hold the run
 // open. Returns the exit code. `next` passes assertSafeNext() before a byte is
 // written; `state` (a status snapshot) is optional and appears in --json only.
-function report({ command, effect, items, next, state = null, mode }) {
+// `argv` is the argv the tool handed nextAction(), normalised as it normalised
+// it; left out, it is this process's own.
+function report({ command, effect, items, next, state = null, mode, argv = process.argv.slice(2) }) {
   const summary = summarize(items);
   const exit = exitCodeFor(items);
-  assertSafeNext(next, exit);
+  assertSafeNext(next, exit, { effect, argv });
 
   const emit = (text) => {
     reportedExit = exit;

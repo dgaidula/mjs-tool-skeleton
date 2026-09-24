@@ -79,7 +79,12 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
    once stdout has flushed, and a `main()` that returns without a report
    exits the same way (`exitAfterFlush()`), so no open handle can hold the
    process. Never `process.exit()` right after output, which drops unflushed
-   stdout (a pipe takes 64 KiB at a time on macOS).
+   stdout (a pipe takes 64 KiB at a time on macOS). Nor does the runtime wait
+   for the event loop to drain (that is the open-handle hang), so a tool
+   awaits, or synchronously flushes, every file write before `main()` calls
+   `report()` or returns: an un-awaited write, such as an append-mode
+   logger’s closing line, is cut off (a pilot tool’s batch log lost its last
+   line in 5 of 5 runs). The docs say so; the fence does not change for it.
 
 9. **`nextAction()` is the single source of `next`**, as `verdict()` is of
    verdicts: pure, fed the command, the finished items, `effect`, and argv,
@@ -92,8 +97,8 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
    A `null` next (a tool that has not adopted the layer) renders no line.
 
 10. **The `next` safety rules are enforced, not documented.** `report()` calls
-    `assertSafeNext(next, exit)` before it writes a byte, and a violation
-    throws (exit 3). Rule 2: `next.argv` never carries `--yes*`, `--force*`,
+    `assertSafeNext(next, exit, { effect, argv })` before it writes a byte,
+    and a violation throws (exit 3). Rule 2: `next.argv` never carries `--yes*`, `--force*`,
     `--assume-yes`, `--allow`, `--allow=*`, `--allow-*`, `--i-am-*` (long forms
     case-insensitive, with or without `=value`), `-y` or `-Y` alone or grouped,
     or a flag in the tool’s `EXTRA_OVERRIDE_FLAGS`; a step that needs one is
@@ -101,9 +106,15 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
     done/run/wait/ask, 1 any, 2 and 3 only stop. The guard also fixes the shape
     (exactly `action, who, argv, afterSeconds, why, cwd`; `who` is
     `NEXT_WHO[action]`, never chosen — `nextStep()` takes no `who` or `cwd`;
-    `run`/`wait` need an argv that starts with `selfArgv()`, this node and
-    this script, so advice always re-enters the tool’s own gates; `done`/`stop`
-    carry none; `wait` never carries `--go` or a `MUTATING_COMMANDS` name;
+    `run`/`wait` need an argv, and every argv (an `ask`’s included) starts
+    with `selfArgv()`, this node and this script, so advice always re-enters
+    the tool’s own gates; a `run` that carries `--go` is exactly
+    `rerunArgv(argv, '--go')` of the dry run it follows, checked against the
+    `effect` and `argv` that `report()` is handed (the argv the tool gave
+    `nextAction()`, or else the process’s own), so advice goes straight to
+    `--go` only on what was just previewed and a step into another command
+    carries no `--go`; `done`/`stop` carry none; `wait` never carries
+    `--go` or a `MUTATING_COMMANDS` name;
     `why` is one line with no control characters; `cwd` is `START_CWD`, read
     as the module loads). `rerunArgv()` builds `[process.execPath, script as
     invoked, …argv]` and puts extra flags before any `--`. `nextStep()`
@@ -112,7 +123,9 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
     quoting in the `next:` line): C0 but TAB, DEL, C1, U+2028/2029, and the
     bidi controls, so a filename can neither break a line, reorder it, nor
     trip the guard. The `next:` line prints a command only for `run`/`wait`,
-    and for `ask` only in human mode, as `your call: …`. Never move the call
+    led by `cd <cwd> &&` (quoted like the argv) so it runs as pasted from any
+    directory, and for `ask` only in human mode, as `your call: …`, with no
+    `cd` (its reader is in the directory already). Never move the call
     out of `report()`, never loosen the lists, and never give an override
     flag a short alias other than `-y` unless the tool declares it in
     `EXTRA_OVERRIDE_FLAGS` — the guard knows no other.
