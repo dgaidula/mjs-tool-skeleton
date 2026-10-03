@@ -10,10 +10,11 @@ prove the adoption is done.
 It was written from two adoptions on 2026-10-03, a read-only linter and a
 renamer of master video files, and from a new tool built on the skeleton the
 same day (a dedup tool that culls redundant copies). Each went through an
-adversarial gate and a fix round. A third adoption (a runner for legacy
-AppleScripts) then followed the draft and reported where it fell short. Every
-rule below is either something one of them got wrong first or a question one
-of them had to settle.
+adversarial gate and a fix round. Two more adoptions the same day, a runner
+for legacy AppleScripts and a generator whose output reaches every machine,
+followed the draft, went through their own gates, and reported where it fell
+short. Every rule below is either something one of them got wrong first or a
+question one of them had to settle.
 
 ## 1. Before you edit: find every caller
 
@@ -39,6 +40,18 @@ on it before you touch it.
   only previews: it exits 0 having done nothing, and keeping old flags as
   aliases does not help. Find every caller that ran the command end to end
   and decide, per caller, whether it adds `--go` or stops at `ask`.
+
+- **The inverse case: an old flag that names a command *and* means “now”**
+  (`--write`, which wrote immediately). Its callers expect it to act, so it
+  maps to `<command> --go` and stays the one spelling that skips the preview.
+  Put it in `GO_ALIASES`, normalise it out of the `argv` that `next` reads, and
+  document that it is the no-preview path.
+
+- **Callers that display a line of output,** not just its exit code (a status
+  line clipped to a fixed width, a refusal message quoting the last line). The
+  last line is now the `next:` line, and in human mode an `ask` prints the
+  command before the reason, so a clipped display shows a path. Point such
+  callers at `--brief`, where the line is `next: ask  (<reason>)`.
 
 - If the tool is deployed as a copy (a skill bundle, a dotfile manager), find
   out how the copy is installed and update it the same way, so the source
@@ -72,7 +85,9 @@ on it before you touch it.
   flag from another command is a usage error rather than silently ignored.
   `multiple: true` keeps each flag’s own values in order but loses how
   different repeated flags interleave (`--rule a --patch b --rule c`); use
-  `tokens: true` when that order matters. A value that starts with `-` needs
+  `tokens: true` when that order matters. A tool whose modes were flags
+  (`--check`, `--write`) gets commands, and two mode flags at once become a
+  usage error where the last one used to win. A value that starts with `-` needs
   the `--flag=-x` form, and
   no arguments at all is a usage error.
 
@@ -147,6 +162,15 @@ by how worried a reader should be.
 
 - **Items that span files** carry `path: null`.
 
+- **One finding can carry a different verdict per command.** A lint finding
+  is `fail` under `check` (the run exists to find it) and `skip` under `write`
+  (the write does not fix it, and must not fail because of it). Map verdicts
+  per command, not per tool.
+
+- **A mutating command’s no-op items are `skip`, not `ok`.** An `ok` item in a
+  dry run reads as “would act”, so the default advice offers a `--go` that
+  would do nothing.
+
 - **A rename’s item is named `<from> -> <to>`.** A target filename with
   spaces cannot sit readably in the summary column.
 
@@ -167,6 +191,12 @@ it:
   2 findings” on a run whose only settings finding was “no settings file at
   that path” sent an agent to edit nothing; the right line names the missing
   file and says to re-run with the right path.
+
+- **`next` may step into another command of the same tool,** as long as it
+  carries no `--go`: `check` with drift advises `write` (its dry run), and an
+  applied `write --go` advises `run check` to confirm. The `why` must say what
+  that next run will find: if lint findings remain, it says so, rather than
+  promising a clean check.
 
 - **A runbook outranks `next`.** Where a runbook says “stop” or “a person’s
   call”, `next` says `ask` or `stop` there, never `run`. Moving a stop
@@ -202,6 +232,13 @@ gates:
   `ino`. Alias paths (`/tmp` and `/private/tmp`) and hard links make one file
   look like two: counted twice, or excluded under one spelling and read under
   the other.
+
+- **Rewrite a file in place through a temp file and a rename.** `writeFileSync`
+  truncates first, so a write cut short (a full disk, a file-size limit, a
+  crash) leaves a partial file, which a later check may even pass. Write a temp
+  file in the target’s real directory (resolve symlinks first, so a link keeps
+  pointing where it did), copy the mode, then `rename` it over the target.
+  Re-read the target just before, and refuse if it changed since the plan.
 
 - **Re-verify what you rely on, not just what you touch.** A cull that keeps
   one copy must re-check that copy at the moment it moves the others; one
@@ -240,6 +277,15 @@ gates:
   against `--go`; `--go` acts only on what was previewed; every exit code;
   `--help`, `--version` and a symlinked entry; `--brief` and `--json`
   snapshots.
+
+- **Porting a suite that asserted on the old text** (especially stderr): keep
+  the old invocations, so they double as alias coverage, and move the
+  assertions to the item shape. List every test whose assertions changed, so
+  a reviewer can see none was weakened.
+
+- **Each verdict needs a fixture where it is the only finding.** A test that
+  expects exit 1 from a fixture with several kinds of drift stays green when
+  one verdict is mapped to `ok` by mistake.
 
 - **Prove the important assertions are load-bearing.** Break the guard in a
   scratch copy and watch a test go red: the collision check, the re-check
