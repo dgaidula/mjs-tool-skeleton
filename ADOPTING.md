@@ -334,8 +334,26 @@ gates:
    `--go` refuses when the re-computed plan differs.
 
 4. **Grouping in the human renderer.** A tool that used to print findings
-   under a file heading now repeats the file on every block.
+   under a file heading now repeats the file on every block. A second case: a
+   checker whose findings carried a severity of their own (ACT / WARN / INFO
+   headings) loses the headings, and two severities can share one verdict.
+   One shape that needs no contract change: an optional `group` on each item
+   that only the human renderer reads, as it already reads `lines`, printing a
+   heading wherever the group changes. `--brief`, `--json` and the contract
+   string stay as they are. Severity stays out of the verdict (§3) and lives in
+   the tool’s `data` and summary. Until then, sort the items by group and put
+   the group at the start of each summary (`ACT call ITM …`).
 
 5. **`effect` for a read-only command that writes a new output file.** The
    adoptions reported `effect: "read-only"` with the item’s `changed: true`;
    the contract does not yet say whether that pairing is right.
+
+6. **Batch the fence revisions.** Items 1, 3 and 4 each change the fence
+   itself. The fence is byte-identical in every adopted tool, and seven test
+   suites pinned its sha256 on 2026-10-03, so any edit turns each of them red
+   and means a mechanical swap in every adopted repo. Make the three one
+   revision, not three. Item 3 has the safety argument, so it sets the timing;
+   items 1 and 4 ride along. A revision that leaves the `--brief` lines, the
+   `--json` keys and the exit codes as they are is a new runtime revision, not a
+   new contract: `contract` stays `mjs-tool/2`. Item 2 lives in the scanner,
+   not the fence, and can land on its own.
