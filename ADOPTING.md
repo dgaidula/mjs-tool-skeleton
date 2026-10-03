@@ -13,7 +13,8 @@ same day (a dedup tool that culls redundant copies). Each went through an
 adversarial gate and a fix round. Two more adoptions the same day, a runner
 for legacy AppleScripts and a generator whose output reaches every machine,
 followed the draft, went through their own gates, and reported where it fell
-short; a fifth, an unattended watcher that launches agent sessions, did too.
+short; a fifth, an unattended watcher that launches agent sessions, and a
+sixth, a personal-finance CLI with a live server beside it, did too.
 Every rule below is either something one of them got wrong first or a
 question one of them had to settle.
 
@@ -48,6 +49,15 @@ on it before you touch it.
   Put it in `GO_ALIASES`, normalise it out of the `argv` that `next` reads, and
   document that it is the no-preview path.
 
+- **A scheduled caller under `set -e`.** A read-only command that always
+  exited 0 now exits 1 on findings, and a wrapper that runs it under `set -e`
+  (or `&&`) stops there. Give the wrapper per-command handling: treat 1 as a
+  result, log 2 and 3, and exit with the worst code it saw. A wrapper that
+  takes names from the tool’s output reads `--json`, not `--brief`: the last
+  field of a brief line cannot tell a name with a space from a long label, and
+  an old `cut -f1` over human output turns every word into a name. Test which
+  names the wrapper acted on, not just its exit code.
+
 - **Callers that display a line of output,** not just its exit code (a status
   line clipped to a fixed width, a refusal message quoting the last line). The
   last line is now the `next:` line, and in human mode an `ask` prints the
@@ -64,6 +74,10 @@ on it before you touch it.
   line 2 down to the first line that isn’t one: a shebang on line 1, then the
   comment block with no blank line between. A `/** … */` header, or a blank
   line after the shebang, gives an empty `--help`.
+
+- **Rename in its own commit.** A `.js` → `.mjs` rename plus a heavy rewrite
+  in one commit reads to git as a delete and an add, and blame stops there.
+  Commit the pure rename first.
 
 - **Move module-scope CLI code into `main()`.** Argument parsing, config
   loading and any `process.exit` at the top level all move. Finish every
@@ -118,6 +132,17 @@ on it before you touch it.
   either yet (open item 1); document it rather than editing the fence. If the
   tool overrides `--version` (to print a commit, say), document that it then
   differs from `--json`’s `version`.
+
+- **Shape-check local inputs per command, before use.** Valid JSON of the
+  wrong shape (`null`, an object where an array belongs) otherwise escapes as
+  an unnamed `TypeError` at exit 3. Check the top-level shape of each file the
+  command loads and report it as a `fail` item that names the file.
+
+- **Keep sensitive data out of every mode.** An item’s `name` and `path`
+  print in every mode, and `data` prints in `--json`. When a file name is
+  itself personal (an account number), name the item by a label and leave
+  `path: null`; scrub raw input rows in `data` down to the fields the reader
+  needs. Whole rows leaked account numbers into one adoption’s `--json`.
 
 - **Progress goes to stderr, in human mode only.** `--brief`, `--quiet` and
   `--json` stay silent: an agent pays for every line.
@@ -204,6 +229,15 @@ by how worried a reader should be.
   dry run reads as “would act”, so the default advice offers a `--go` that
   would do nothing.
 
+- **A no-op item must not write.** If the underlying writer always rewrites
+  (and rotates a backup), `skip unchanged` is a lie on disk: change the step to
+  run only for an `ok` item, so nothing to do means nothing written.
+
+- **One fault can be an item in the preview and exit 3 under `--go`.** A
+  missing token or an unreachable service is something a dry run can describe
+  (a `refuse` item: the plan cannot run), while under `--go` it stops the run
+  (exit 3, nothing on stdout). Both are right; document both.
+
 - **A rename’s item is named `<from> -> <to>`.** A target filename with
   spaces cannot sit readably in the summary column.
 
@@ -230,6 +264,11 @@ it:
   applied `write --go` advises `run check` to confirm. The `why` must say what
   that next run will find: if lint findings remain, it says so, rather than
   promising a clean check.
+
+- **A positional spelled like an override flag or a `--go` alias** (a file
+  named `--force-export.scpt`, passed after `--`) makes the guard refuse the
+  advice, and the run exits 3. When the run’s argv holds such a token,
+  `nextAction()` returns `ask` with no `argv`.
 
 - **A runbook outranks `next`.** Where a runbook says “stop” or “a person’s
   call”, `next` says `ask` or `stop` there, never `run`. Moving a stop
@@ -272,6 +311,19 @@ gates:
   file in the target’s real directory (resolve symlinks first, so a link keeps
   pointing where it did), copy the mode, then `rename` it over the target.
   Re-read the target just before, and refuse if it changed since the plan.
+
+- **Check that the record can be written before the first side effect.** A
+  command that pushes notifications and then records what it pushed will, if
+  the record write fails, push everything again on the next run. Check the
+  record is writable before the first push, make the record write a tracked
+  step, and on its failure keep the items for the effects that did happen.
+
+- **Validate every output location in the plan.** Walk `lstat` up to the
+  nearest existing ancestor of `--out` (or `--out-dir`) and refuse a file in
+  the way, a dangling symlink, or a directory that is not writable, before
+  anything is loaded or written. Otherwise a clean preview is followed by a
+  `--go` that writes its inputs and then fails on the output. Two adoptions
+  hit this separately.
 
 - **Re-verify what you rely on, not just what you touch.** A cull that keeps
   one copy must re-check that copy at the moment it moves the others; one
@@ -320,6 +372,13 @@ gates:
   expects exit 1 from a fixture with several kinds of drift stays green when
   one verdict is mapped to `ok` by mistake.
 
+- **A dry run that predicts writes is checked against the real writes.** Plan
+  in memory, but keep `--go` on its own write path, so the dry run is an
+  independent prediction; give each file item `data.sha256` of its planned
+  bytes, and test that the applied bytes match. Two traps: round-trip planned
+  content through JSON the same way the writer does (`NaN`, `undefined`), and
+  sort directory listings, or plan and apply differ by listing order alone.
+
 - **Prove the important assertions are load-bearing.** Break the guard in a
   scratch copy and watch a test go red: the collision check, the re-check
   before acting, the rule that `--go` leaves `warn` items alone.
@@ -342,6 +401,13 @@ gates:
   that spawns it, and asserts the stub was never called where it should not
   be. Otherwise a regression in a report test starts the real thing: one gate
   counted fifty would-be paid sessions, caught only by its own stub.
+
+- **Tests never reach the owner’s real data or programs.** A tool whose
+  default data directory is the owner’s real files runs every test against a
+  fixture directory set explicitly. Compose the test `PATH` as the stub
+  directory, Node’s own directory and `/bin` (not the inherited `PATH`, which
+  reaches real `notify`, `pbcopy` and the like), and add an `after()` hook
+  that fails the suite if a guard stub was called.
 
 - **A test that kills a child attaches its `close` listener before `kill()`,
   and has a timeout.** Otherwise a child that already exited hangs the whole
