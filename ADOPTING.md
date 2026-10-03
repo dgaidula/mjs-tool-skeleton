@@ -13,7 +13,8 @@ same day (a dedup tool that culls redundant copies). Each went through an
 adversarial gate and a fix round. Two more adoptions the same day, a runner
 for legacy AppleScripts and a generator whose output reaches every machine,
 followed the draft, went through their own gates, and reported where it fell
-short. Every rule below is either something one of them got wrong first or a
+short; a fifth, an unattended watcher that launches agent sessions, did too.
+Every rule below is either something one of them got wrong first or a
 question one of them had to settle.
 
 ## 1. Before you edit: find every caller
@@ -125,6 +126,38 @@ on it before you touch it.
   at once, which fails past a few hundred megabytes (around a million and a
   half items with long paths). A tool that can produce item lists or `state`
   that large caps them and writes the full lists to a sidecar file.
+
+- **The fence’s crash handlers own every path in the file.** Its entry guard
+  installs `uncaughtException` and `unhandledRejection` handlers that print one
+  `error:` line and exit 3. Adopting the fence for one report command therefore
+  changes how a long-running loop, or any other command in the same file,
+  crashes: Node’s stack trace no longer reaches any log. A tool that keeps
+  paths outside the contract (a daemon, a live view) removes both listeners on
+  those paths once it knows which path it is on, and rethrows anything that
+  escapes outside the promise chain (`setImmediate(() => { throw e; })`), so
+  Node prints the stack and exits as it always did.
+
+- **Partial adoption in a multi-command tool is allowed but must be said.**
+  When only some commands go through `report()`, the README and `--help` say
+  which, and a conformance scan’s “conformant” covers only those. A command
+  tested in-process cannot reach `report()`, which owns stdout and exits the
+  process; that is a reason to leave it out, not to fake it.
+
+- **Exit 3 has nothing on stdout, and exit 1 always has a report.** A dialect
+  that printed a `fail` item and exited 3 must choose: an environment fault is
+  exit 3 with the reason on stderr; something the report can describe is an
+  item at exit 1. An old exit 1 with an empty stdout (a startup failure) moves
+  to 3, or an exit-code reader will take it for a finding.
+
+- **When the bare invocation is not a report** (a watcher whose default is to
+  loop), choose the human form of the report explicitly (`--once --dry-run`,
+  say), and document that its exit codes now follow the contract.
+
+- **Facts `next` needs from outside the items** (who holds a lock, how many
+  attempts remain) go into item `data` before `nextAction()` runs, so the
+  advice is computed from the same objects every mode prints. Verify such a
+  fact rather than trusting it: a live pid in a lock file is not proof that
+  the owner is your process.
 
 ## 3. Verdicts: one meaning each
 
@@ -302,6 +335,17 @@ gates:
   assert on the log (an empty log proves a dry run executed nothing). A stub
   that must outlive a timeout `exec`s its sleep, so the timeout kills the stub
   itself.
+
+- **Every test that runs the tool gets the stubs, not just the ones about the
+  external program.** A tool that can start a paid or side-effecting program
+  (an agent session, a deploy) puts the recording stub on `PATH` in every test
+  that spawns it, and asserts the stub was never called where it should not
+  be. Otherwise a regression in a report test starts the real thing: one gate
+  counted fifty would-be paid sessions, caught only by its own stub.
+
+- **A test that kills a child attaches its `close` listener before `kill()`,
+  and has a timeout.** Otherwise a child that already exited hangs the whole
+  suite instead of failing it.
 
 ## 7. Done means
 

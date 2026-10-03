@@ -5,7 +5,8 @@
 - **`ADOPTING.md`: the adoption procedure.** Callers, verdict meanings, `next`
   overrides, mutating-tool safety, tests and a done checklist, written from
   the 2026-10-03 adoptions (a linter, a renamer, and an AppleScript runner
-  that tested the draft, and a fleet-wide generator), a new dedup tool, and
+  that tested the draft, a fleet-wide generator, and an unattended watcher),
+  a new dedup tool, and
   their gates. README adoption step 4 gains the hash-pin path. Docs
   only; the contract and the fence are unchanged.
 
