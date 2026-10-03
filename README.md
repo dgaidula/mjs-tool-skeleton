@@ -370,6 +370,10 @@ npm test      # node --test — runs the skeleton suite and the scaffolder suite
 
 ## Adopting the contract in an existing tool
 
+This section is the code. [`ADOPTING.md`](ADOPTING.md) is the procedure
+around it: finding the callers that move with the tool, choosing verdicts and
+`next`, the safety a mutating tool owes, and what “done” means.
+
 The shortest path: paste the runtime fence from `skeleton/tool.mjs` at the
 bottom of the tool, unedited, and write the six things it asks for, which it
 checks as it loads — `MUTATING_COMMANDS`, `AUTO_RUN_COMMANDS` (usually an
@@ -519,7 +523,10 @@ What the fence cannot do for you:
    the removed working directory, the hook check, `--help`, `--version`,
    and the symlinked invocation. The rest pin the placeholder behaviour (the dry run
    and `--go`, the protected target and its y/N prompt, the exact `why`
-   texts): write those afresh for the tool’s own commands.
+   texts): write those afresh for the tool’s own commands. The lighter path,
+   which the 2026-10-03 adoptions took: pin the fence by hash in the tool’s
+   own tests, so identical bytes are proven identical, and write only the
+   tool-specific tests ([`ADOPTING.md`](ADOPTING.md) §6).
 
 5. **Exit-code dialects are an open item.** Some existing tools exit 2 on a
    refusal, where the contract keeps 2 for usage errors and a refusal is 1;

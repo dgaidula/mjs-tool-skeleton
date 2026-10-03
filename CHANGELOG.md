@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **`ADOPTING.md`: the adoption procedure.** Callers, verdict meanings, `next`
+  overrides, mutating-tool safety, tests and a done checklist, written from
+  the 2026-10-03 adoptions (a linter, a renamer, and an AppleScript runner
+  that tested the draft), a new dedup tool, and
+  their gates. README adoption step 4 gains the hash-pin path. Docs
+  only; the contract and the fence are unchanged.
+
 ## 0.2.0 — 2026-09-24
 
 Contract `mjs-tool/2`: a next-action layer, an explicit effect, and one shared

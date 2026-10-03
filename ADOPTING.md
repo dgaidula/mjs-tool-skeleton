@@ -1,0 +1,295 @@
+# Adopting the contract: the procedure
+
+The README’s [“Adopting the contract in an existing tool”](README.md#adopting-the-contract-in-an-existing-tool)
+covers the code: paste the runtime fence, write the six things it asks for,
+keep the old flags. This file covers everything around the code: the callers
+that move with the tool, the verdict and `next` decisions that the fence
+cannot make for you, the safety a mutating tool owes its user, and how to
+prove the adoption is done.
+
+It was written from two adoptions on 2026-10-03, a read-only linter and a
+renamer of master video files, and from a new tool built on the skeleton the
+same day (a dedup tool that culls redundant copies). Each went through an
+adversarial gate and a fix round. A third adoption (a runner for legacy
+AppleScripts) then followed the draft and reported where it fell short. Every
+rule below is either something one of them got wrong first or a question one
+of them had to settle.
+
+## 1. Before you edit: find every caller
+
+A tool’s output is an interface, and adopting the contract changes it: new
+exit codes, new line shapes, unknown flags newly refused. So list who depends
+on it before you touch it.
+
+- Search for the tool’s name **and** each of its flags, everywhere a caller
+  could live: other repositories, scripts and wrappers, scheduled jobs, CI,
+  dotfiles, and the instruction files agents read (skills, runbooks, agent
+  definitions, `CLAUDE.md`).
+
+- Sort each hit into one of three kinds: it **invokes** the tool, it
+  **parses** the tool’s output or exit code, or it only **mentions** it. The
+  first two move with the tool, in the same change. A mention needs nothing.
+
+- A caller that parses the old text or the old exit codes and cannot move
+  cleanly is a stop: settle it with the tool’s owner before the adoption
+  lands, not after.
+
+- **A command that gains the dry-run gate for the first time is the riskiest
+  change an adoption makes.** Every old command line still parses, but now
+  only previews: it exits 0 having done nothing, and keeping old flags as
+  aliases does not help. Find every caller that ran the command end to end
+  and decide, per caller, whether it adds `--go` or stops at `ask`.
+
+- If the tool is deployed as a copy (a skill bundle, a dotfile manager), find
+  out how the copy is installed and update it the same way, so the source
+  and the copy never diverge.
+
+## 2. The code: what the README’s steps leave out
+
+- **`--help` reads the header from line 2.** It prints the `//` lines from
+  line 2 down to the first line that isn’t one: a shebang on line 1, then the
+  comment block with no blank line between. A `/** … */` header, or a blank
+  line after the shebang, gives an empty `--help`.
+
+- **Move module-scope CLI code into `main()`.** Argument parsing, config
+  loading and any `process.exit` at the top level all move. Finish every
+  write and rename before `report()`.
+
+- **A tool with no verb** reports its own name as `command`, and
+  `MUTATING_COMMANDS` holds that name. The `wait` guard’s mutating-command
+  check matches command words in `argv`, so for a verbless tool it will in
+  practice never fire; only its `--go` check protects.
+
+- **Port every `die()` by what it meant.** A refusal becomes a `refuse` item
+  (exit 1); a bad argument value is a usage error (exit 2); broken input is a
+  `fail` item; a missing program or an environment fault is exit 3. A refusal
+  whose stated reason has gone stale keeps its behaviour with a corrected
+  reason.
+
+- **Switching to `parseArgs` is a behaviour change.** A hand-rolled,
+  permissive parser accepted unknown flags; `parseArgs` makes them exit 2. In
+  a tool with several commands, give each command its own flag list, so a
+  flag from another command is a usage error rather than silently ignored.
+  `multiple: true` keeps each flag’s own values in order but loses how
+  different repeated flags interleave (`--rule a --patch b --rule c`); use
+  `tokens: true` when that order matters. A value that starts with `-` needs
+  the `--flag=-x` form, and
+  no arguments at all is a usage error.
+
+- **A command whose output is the product** (decompiled source, a child
+  program’s output) moves it into item `data` or into a named output file:
+  stdout belongs to the report. `tool decompile > file` stops working, so say
+  so in the changelog.
+
+- **A wrapper does not pass a child’s exit code through.** A child that
+  failed or timed out (exit 124, say) is a `fail` item with the code in its
+  `data`; the tool’s own exit stays 0, 1, 2 or 3.
+
+- **`next`’s `why` is capped at 200 characters.** Build it from the item’s
+  name, its summary and a short remedy, not from a reason that carries a long
+  temporary path.
+
+- **A flag whose job the contract now does** (an exit-code switch such as a
+  `--ci` that made findings fail) stays accepted as a documented no-op.
+  Callers that relied on its exit codes read `summary.<verdict>` from
+  `--json` instead. List every exit-code change in the changelog.
+
+- **The tool’s name is the real file’s basename** (a symlink’s name doesn’t
+  count), and it also appears in the usage-error hint (“run `lint --help`”).
+  **The version comes from the first `package.json` found walking up from
+  the real file,** so a copy deployed without one reports an unrelated
+  ancestor’s version, or `0.0.0` if there is none. There is no hook for
+  either yet (open item 1); document it rather than editing the fence. If the
+  tool overrides `--version` (to print a commit, say), document that it then
+  differs from `--json`’s `version`.
+
+- **Progress goes to stderr, in human mode only.** `--brief`, `--quiet` and
+  `--json` stay silent: an agent pays for every line.
+
+- **`--json` is built as one string.** `report()` serialises the whole object
+  at once, which fails past a few hundred megabytes (around a million and a
+  half items with long paths). A tool that can produce item lists or `state`
+  that large caps them and writes the full lists to a sidecar file.
+
+## 3. Verdicts: one meaning each
+
+Choose each item’s verdict by what the tool **did or will do** with it, not
+by how worried a reader should be.
+
+| verdict | meaning | examples from the pilots |
+|---|---|---|
+| `ok` | done, or would be done, as asked | a clean settings file; a confident rename |
+| `warn` | a finding the tool does not act on as it acts on `ok`, because it is uncertain or advisory | a below-threshold match; a permission that is probably redundant |
+| `skip` | not applicable, or informational: never a reason to fail the run | an already-named file; a prior review’s verdict |
+| `refuse` | the tool declines this item: a precondition or safety gate is not met | the target name is taken; two items would rename to one name; a named input does not exist |
+| `fail` | the tool tried and broke, or the input is broken; in a read-only checker, also a definite violation (see §4) | a rename threw; an unreadable or wrong-shape settings file; a superseded permission entry |
+
+- **In a tool that acts per item, `--go` never does to a `warn` item what it
+  does to an `ok` one.** At most it holds the item aside, as the README’s rule
+  3 allows. Say so in the summary itself (`not renamed: needs review (score
+  0.600)`), so a `⚠ warn` line beside `✓ ok renamed` cannot be read as
+  “renamed, with a caveat”. Where several items feed one action (patch rules
+  before a single compile-and-run), a `warn` on an input qualifies that one
+  action: decide whether it blocks `--go`, and say which in the docs.
+
+- **An `ok` item that `--go` will act on, but with a caution** (a script
+  that is not the tool’s own patched copy) carries the caution in its
+  summary: `--brief` prints no reason for an `ok` line.
+
+- **Map labels to verdicts explicitly, and throw on an unknown one.** A
+  fallthrough to `ok` reports a new, unregistered check as clean. A
+  `verdict()` built from facts, like the skeleton’s, meets this when every
+  combination of facts has an explicit branch.
+
+- **An advisory that was never a failure stays a `skip`.** A linter that
+  surfaced a prior review’s verdict “for information” made every run exit 1
+  once that line became a `warn`, and an agent could never reach clean.
+
+- **Items that span files** carry `path: null`.
+
+- **A rename’s item is named `<from> -> <to>`.** A target filename with
+  spaces cannot sit readably in the summary column.
+
+## 4. `next`: say what is actually wrong
+
+`defaultNextAction()` is a starting point, and both adoptions had to override
+it:
+
+- **It treats every `fail` as `stop`** (“broken beyond the tool’s remedy”).
+  A checker whose definite findings are `fail` wants `ask` (propose the fix,
+  wait for approval) and keeps `stop` for an input it cannot read.
+
+- **After `--go`, it says `done` when `warn` or `refuse` findings remain.**
+  If those findings need a person (items left for a hand check), the answer
+  is `ask`.
+
+- **The `why` names the real problem and its remedy.** “Propose edits for the
+  2 findings” on a run whose only settings finding was “no settings file at
+  that path” sent an agent to edit nothing; the right line names the missing
+  file and says to re-run with the right path.
+
+- **A runbook outranks `next`.** Where a runbook says “stop” or “a person’s
+  call”, `next` says `ask` or `stop` there, never `run`. Moving a stop
+  condition out of a runbook and into the tool is the owner’s decision.
+
+- **A flag that moves a gate is an override.** Not only `--overwrite`-style
+  flags: a threshold such as `--min-score` belongs in `EXTRA_OVERRIDE_FLAGS`,
+  so advice never repeats it, and the docs say an agent never adds it on its
+  own. Your `nextAction()` must then return `ask` with no `argv` when the
+  run’s own argv carries that flag, or the guard refuses the advice and the
+  run exits 3.
+
+## 5. A mutating tool’s safety
+
+The fence guarantees only that advice reading `run … --go` repeats the dry
+run’s exact argv with `--go` added. It cannot guarantee the world held still,
+and it checks nothing a person or a runbook types. These came out of the
+gates:
+
+- **Re-check each target with `lstat` just before acting** (a broken symlink
+  counts as existing). That narrows the window but does not close it. Where
+  “never replace” must hold, use an operation that fails on an existing
+  target: `link` then `unlink` for a rename, `open(…, 'wx')` or
+  `copyFile(…, COPYFILE_EXCL)` for a write.
+
+- **Compare names the way the filesystem does.** Case-insensitive and
+  normalization-insensitive volumes treat `Mad About You` and `Mad about You`,
+  or an NFC and an NFD `Café`, as one file. A collision check on exact strings
+  let two masters rename to “different” names and one silently replaced the
+  other, while the report said both were renamed.
+
+- **Compare paths by identity, not by string.** Use `realpath`, or `dev` plus
+  `ino`. Alias paths (`/tmp` and `/private/tmp`) and hard links make one file
+  look like two: counted twice, or excluded under one spelling and read under
+  the other.
+
+- **Re-verify what you rely on, not just what you touch.** A cull that keeps
+  one copy must re-check that copy at the moment it moves the others; one
+  that checked only the copies being moved could move the last one.
+
+- **Treat repositories and packages as wholes.** A tool that moves or deletes
+  leaves alone anything with a `.git` above it, and anything inside an app or
+  document package, however redundant the single file looks.
+
+- **Never overwrite an output file the tool did not write.** Check for the
+  tool’s own header line before replacing an existing output, even under
+  `--go`. Where the output is pure content with no header to check, create it
+  exclusively (`'wx'`, or a copy that fails on an existing target), and treat
+  an existing file with identical content as already done.
+
+- **When the side effect is running something,** the dry run shows exactly
+  what would run (the command, its arguments, the patched text) and executes
+  none of it. If the preview needs a harmless helper call (asking the system
+  for a disk’s name, say), name it in the docs and prove in a test that it is
+  the only call.
+
+- **Plan drift is real.** A tool that re-plans under `--go` acts on whatever
+  the inputs hold then, not on what was previewed. Until the contract carries
+  a plan digest (open item 3), document it, and have the runbook check that
+  what `--go` did matches what the dry run’s `ok` lines promised.
+
+- **A partial `--go` is legitimate** (act on the `ok` items, leave the
+  findings) as long as the item lines make plain what it leaves. On a failure
+  part-way, stop, and mark the untried items `skip` “not attempted”.
+
+## 6. Tests
+
+- **Pin the fence by hash in the tool’s own tests** (sha256 of the block
+  against `skeleton/tool.mjs`), then write tool-specific tests instead of
+  porting the runtime suite, which would re-test identical bytes: dry run
+  against `--go`; `--go` acts only on what was previewed; every exit code;
+  `--help`, `--version` and a symlinked entry; `--brief` and `--json`
+  snapshots.
+
+- **Prove the important assertions are load-bearing.** Break the guard in a
+  scratch copy and watch a test go red: the collision check, the re-check
+  before acting, the rule that `--go` leaves `warn` items alone.
+
+- **Cover the cases the gates found:** case-only and Unicode-form name pairs,
+  a target that appears mid-run, a broken symlink at the target, alias paths
+  to one file, a file past the first read chunk.
+
+- **A tool that calls other programs is tested against stubs.** Put a stub
+  directory first on `PATH` and leave the real binaries’ directories off it,
+  so a missing stub fails loudly instead of reaching the real program. Write
+  the stubs with shell builtins only, have them log their arguments, and
+  assert on the log (an empty log proves a dry run executed nothing). A stub
+  that must outlive a timeout `exec`s its sleep, so the timeout kills the stub
+  itself.
+
+## 7. Done means
+
+- The fence is byte-identical to `skeleton/tool.mjs`, and a test proves it
+  by hash.
+
+- `--json` reports `"contract": "mjs-tool/2"`.
+
+- The tool has been run **exactly as each caller runs it**, and the output
+  read as that caller would read it. A caller that names no command (“use the
+  tool for this”) gets one written into its instructions, and that is the
+  command you run.
+
+- Every caller from step 1 is updated or recorded as needing nothing. The
+  exit-code and flag changes are in the changelog (start one if the tool has
+  none).
+
+- If an agent is meant to drive a mutating tool, its runbook has a procedure
+  with stop conditions, and names the flags only a person may pass.
+
+## Open items for the skeleton
+
+1. **A declared name and version.** A hook so a tool shipped as `lint.mjs`,
+   or deployed without its `package.json`, can say what it is.
+
+2. **A conformance check that hashes the fence body,** so “unedited” is
+   checked, not asserted, by a command any adopter can run.
+
+3. **A plan digest.** The dry run’s `--json` carries a digest of its plan, and
+   `--go` refuses when the re-computed plan differs.
+
+4. **Grouping in the human renderer.** A tool that used to print findings
+   under a file heading now repeats the file on every block.
+
+5. **`effect` for a read-only command that writes a new output file.** The
+   adoptions reported `effect: "read-only"` with the item’s `changed: true`;
+   the contract does not yet say whether that pairing is right.
