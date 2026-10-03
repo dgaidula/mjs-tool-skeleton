@@ -441,7 +441,13 @@ gates:
    checked, not asserted, by a command any adopter can run.
 
 3. **A plan digest.** The dry run’s `--json` carries a digest of its plan, and
-   `--go` refuses when the re-computed plan differs.
+   `--go` refuses when the re-computed plan differs. This needs no fence
+   change: the guard constrains only `run … --go` advice, and an `ask` argv may
+   carry any flag the tool defines, so a tool adds `--plan <digest>` to its own
+   advice and checks it under `--go` in its own code. In `--brief` and
+   `--quiet` an `ask` prints no command, so the digest costs agents nothing
+   there. Being piloted per tool, on the tools where drift can damage data;
+   the recipe lands here once the pilot is gated.
 
 4. **Grouping in the human renderer.** A tool that used to print findings
    under a file heading now repeats the file on every block. A second case: a
@@ -458,12 +464,12 @@ gates:
    adoptions reported `effect: "read-only"` with the item’s `changed: true`;
    the contract does not yet say whether that pairing is right.
 
-6. **Batch the fence revisions.** Items 1, 3 and 4 each change the fence
-   itself. The fence is byte-identical in every adopted tool, and seven test
-   suites pinned its sha256 on 2026-10-03, so any edit turns each of them red
-   and means a mechanical swap in every adopted repo. Make the three one
-   revision, not three. Item 3 has the safety argument, so it sets the timing;
-   items 1 and 4 ride along. A revision that leaves the `--brief` lines, the
+6. **Batch the fence revisions.** Items 1 and 4 each change the fence itself
+   (item 3, it turned out, does not). The fence is byte-identical in every
+   adopted tool, and seven test suites pinned its sha256 on 2026-10-03, so any
+   edit turns each of them red and means a mechanical swap in every adopted
+   repo. Items 1 and 4 are cosmetic and cost agents nothing, so they wait for
+   whatever next forces a fence revision, and ride along with it. A revision that leaves the `--brief` lines, the
    `--json` keys and the exit codes as they are is a new runtime revision, not a
    new contract: `contract` stays `mjs-tool/2`. Item 2 lives in the scanner,
    not the fence, and can land on its own.
