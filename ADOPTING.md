@@ -346,9 +346,37 @@ gates:
   the only call.
 
 - **Plan drift is real.** A tool that re-plans under `--go` acts on whatever
-  the inputs hold then, not on what was previewed. Until the contract carries
-  a plan digest (open item 3), document it, and have the runbook check that
-  what `--go` did matches what the dry run’s `ok` lines promised.
+  the inputs hold then, not on what was previewed. Where that can damage data,
+  carry a plan digest; elsewhere, document the drift and have the runbook
+  check that what `--go` did matches what the dry run’s `ok` lines promised.
+
+- **A plan digest, where drift can damage data.** The fence needs no change:
+  its guard constrains only `run … --go` advice, and an `ask` argv may carry
+  any flag the tool defines. The recipe, from the first gated adoption (a
+  bulk renamer, 2026-10-13):
+  - *The record:* every planned action, sorted (`{from, to}` pairs for a
+    rename); each input’s identity (`path`, `size`, `dev`, `ino`, never a
+    timestamp); and the resolved options (effective defaults filled in, paths
+    through `realpathSync.native`). Serialize it as canonical JSON (keys
+    sorted at every level) and keep the first 16 hex characters of its sha256.
+  - *The dry run* reports it in `--json` as `state.plan`, and its `ask` advice
+    ends `--go --plan <hex>`. An `ask` prints no command in `--brief` or
+    `--quiet`, so those stay byte-identical and the digest costs agents
+    nothing.
+  - *Under `--go --plan <hex>`* the tool recomputes the plan. On a mismatch it
+    acts on nothing: one `refuse` item naming what changed, exit 1, `next: ask`
+    for a fresh dry run. A `--go` without `--plan` works as it always has, so
+    hand use is unchanged.
+  - *To name what changed,* the dry run caches its record by digest in the
+    user cache directory (an absolute `$XDG_CACHE_HOME`, else the platform’s,
+    such as `~/Library/Caches/<tool>`), never beside the data it acts on. A
+    change in `dev` alone is named as a likely remount, not as new files.
+  - *In a runbook,* run one `--json` dry run, read `next.argv` with `jq`, and
+    paste the advised command as literal text. Never run it through `eval`:
+    a command guard cannot see the `--go` inside.
+  - *Tests:* a dry run, then an input change, makes the advised `--go` refuse
+    with the change named; an unchanged plan applies exactly as before; and
+    `--brief` output is byte-identical to what it was without the digest.
 
 - **A partial `--go` is legitimate** (act on the `ok` items, leave the
   findings) as long as the item lines make plain what it leaves. On a failure
@@ -440,14 +468,9 @@ gates:
 2. **A conformance check that hashes the fence body,** so “unedited” is
    checked, not asserted, by a command any adopter can run.
 
-3. **A plan digest.** The dry run’s `--json` carries a digest of its plan, and
-   `--go` refuses when the re-computed plan differs. This needs no fence
-   change: the guard constrains only `run … --go` advice, and an `ask` argv may
-   carry any flag the tool defines, so a tool adds `--plan <digest>` to its own
-   advice and checks it under `--go` in its own code. In `--brief` and
-   `--quiet` an `ask` prints no command, so the digest costs agents nothing
-   there. Being piloted per tool, on the tools where drift can damage data;
-   the recipe lands here once the pilot is gated.
+3. **A plan digest.** Done, with no fence change: the recipe is in §5 (“A
+   plan digest, where drift can damage data”). The number stays so earlier
+   references still resolve.
 
 4. **Grouping in the human renderer.** A tool that used to print findings
    under a file heading now repeats the file on every block. A second case: a
@@ -465,7 +488,7 @@ gates:
    the contract does not yet say whether that pairing is right.
 
 6. **Batch the fence revisions.** Items 1 and 4 each change the fence itself
-   (item 3, it turned out, does not). The fence is byte-identical in every
+   (item 3 did not; see §5). The fence is byte-identical in every
    adopted tool, and seven test suites pinned its sha256 on 2026-10-03, so any
    edit turns each of them red and means a mechanical swap in every adopted
    repo. Items 1 and 4 are cosmetic and cost agents nothing, so they wait for
