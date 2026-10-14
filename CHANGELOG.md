@@ -10,6 +10,10 @@
   a new dedup tool, and
   their gates. README adoption step 4 gains the hash-pin path. Docs
   only; the contract and the fence are unchanged.
+- **`ADOPTING.md` §5: the plan-digest recipe** (open item 3, now done), from
+  its first gated adoption: what the digest covers, where it shows, how
+  `--go --plan` refuses, where the record is cached, the runbook step, and
+  the tests. No fence change.
 
 ## 0.2.0 — 2026-09-24
 
