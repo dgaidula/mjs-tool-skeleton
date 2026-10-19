@@ -338,6 +338,11 @@ tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go`
 (`GO_ALIASES`), and the next-action policy (`nextAction()`). Leave the
 runtime fence alone.
 
+**Which parser.** Keep the template’s `parseArgs` (no dependency) unless the
+tool will have several commands each with its own flags, options with a fixed
+set of values (`--format jpeg|png|webp`), or roughly fifteen or more options.
+Then parse with Commander instead and keep the contract: ADOPTING.md §9.
+
 ## The test suite
 
 `skeleton/tool.test.mjs` is a `node --test` suite against the template — no
