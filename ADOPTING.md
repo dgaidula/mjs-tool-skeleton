@@ -479,7 +479,8 @@ Do them in order; each is mechanical.
    scaffolder’s placeholder.)
 
 2. **Register the flag.** Add `cheat: { type: 'boolean' }` to the options
-   `parseArgs` is given, beside `help` and `version`. A tool that gives each
+   `parseArgs` is given, beside `help` and `version` (a Commander tool:
+   `.option('--cheat')` on the root, §9). A tool that gives each
    command its own flag list parses `--cheat` before it dispatches, in the
    same place it handles `--help`, since the flag belongs to no command. If
    the tool already has a `--cheat` that means something else, stop and
@@ -599,6 +600,104 @@ Done means: the five edits, the tests green, the render checked, and the
 examples read against the real flags. A sweep over many tools reports each
 tool’s examples to its owner for the judgment above, since they are the one
 part no test can check.
+
+## 9. Adopting with Commander
+
+The contract is the output, the exit codes and the `next` advice, all of it in
+the fence, and none of it cares which parser filled `values`. A tool built on
+[Commander](https://github.com/tj/commander.js) adopts `mjs-tool/2` without
+switching parsers. It gains one dependency, so it is no longer zero-dependency.
+
+**When to start with Commander instead of `parseArgs`.** `parseArgs` is the
+default: no dependency, and enough for a few commands and a dozen flags. There
+is no fixed number of arguments; switch when the code you would write on top of
+`parseArgs` becomes the bigger part, which in practice is any one of these:
+
+- several commands, each with its own flags (`parseArgs` takes one flat list,
+  so you end up checking by hand which flag belongs to which command);
+- options with a fixed set of values (`--format jpeg|png|webp`), which
+  Commander checks and lists in help;
+- roughly fifteen or more options with defaults, where hand-checking values
+  costs more than wiring Commander.
+
+**The rules.** Do them all; the skeleton’s own contract suite passes (50/50) on
+a `main()` built this way (checked 2026-10-19 with commander 15).
+
+1. **Parse inside `main()`, with `parseAsync`, never at module level.** The
+   fence’s entry guard calls `main()`, and its exit and flush handling only
+   cover what runs there.
+2. **Commander never prints or exits on its own.** `.exitOverride()`, and
+   `.configureOutput()` with `writeOut` and `writeErr` silenced and
+   `outputError` captured. A `CommanderError` goes to the fence’s
+   `usageError()` (exit 2, stderr only, stdout empty). A Commander default
+   that calls `process.exit()` after printing would truncate a pipe and skip
+   the fence.
+3. **Actions only record what to run.** The work, `nextAction()` and
+   `report()` happen in `main()` after `parseAsync` resolves, exactly as in the
+   `parseArgs` skeleton.
+4. **The contract flags are plain root options:** `--brief`, `--json`,
+   `--quiet`, `--go`, `-y, --yes`, `--cheat`, `--version`, and `-h, --help`
+   with `.helpOption(false)`, so `--help` prints the header (`helpText()`) and
+   `--version` prints `<tool> <version>`, both from the skeleton’s own
+   branches. Pass `program.opts()` to `outputMode()`. A tool that prefers
+   Commander’s generated help keeps `.helpOption()`, routes `writeOut` to
+   stdout, and makes sure the generated text lists every contract flag.
+5. **Never `.allowUnknownOption()`.** The fence’s override guard relies on
+   an unknown flag (`--yes-really`, `--force`) being a usage error.
+6. **The fence and `CONTRACT` are unchanged.** Commander lives above the fence.
+
+The `main()` head that passed, in place of the `parseArgs` call (the rest of
+the skeleton’s `main()` follows unchanged):
+
+```js
+import { Command, CommanderError } from 'commander';
+
+async function main() {
+  let picked = null;
+  let usage = null;
+  const program = new Command(TOOL_NAME)
+    .helpOption(false) // --help prints the header, the tool's one spec
+    .option('-h, --help')
+    .option('--version')
+    .option('--cheat')
+    .option('--brief')
+    .option('--json')
+    .option('--quiet')
+    .option('--go')
+    .option('-y, --yes')
+    .argument('[command]')
+    .argument('[paths...]')
+    .exitOverride()
+    .configureOutput({ writeOut: () => {}, writeErr: () => {}, outputError: (msg) => { usage = msg; } })
+    .action((command, paths) => { picked = { command, paths }; });
+  try {
+    await program.parseAsync(process.argv.slice(2), { from: 'user' });
+  } catch (e) {
+    if (!(e instanceof CommanderError)) throw e;
+    usageError(String(usage ?? e.message).replace(/^error: /, '').trim());
+  }
+  const values = program.opts();
+  const positionals = picked ? [picked.command, ...picked.paths].filter((p) => p !== undefined) : [];
+  // ... then --help, --version, --cheat, outputMode(values) and the work, as in the skeleton
+```
+
+With real subcommands (`program.command('apply')`), keep the same shape: each
+subcommand’s action records its name and arguments, root options stay
+recognised after the subcommand (Commander’s default; don’t turn on
+`.enablePositionalOptions()`), and a root with no action needs the
+`--help`/`--version`/`--cheat` branches reached before Commander reports a
+missing command.
+
+**Tests.** The skeleton’s suite runs a patched copy of the tool from
+`os.tmpdir()`, where `import 'commander'` does not resolve. Run it with
+`TMPDIR` pointing inside the repo (beside `node_modules`), or give the copies a
+`node_modules` link. Everything else carries over, `--cheat` tests included.
+
+**An existing Commander tool** has habits of its own that the contract
+changes, and each is a behaviour change for its callers, so list them for its
+owner before you start: usage errors exiting 1 (Commander’s default), help
+printed after an error, and above all a real run by default with `--dry-run`
+to preview, where the contract dry-runs by default and needs `--go`.
 
 ## Open items for the skeleton
 

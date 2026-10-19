@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **ADOPTING.md §9: adopting with Commander.** A Commander-based tool keeps
+  its parser and adopts `mjs-tool/2`: the rules, a `main()` head checked
+  against the skeleton’s own contract suite (50/50, commander 15), when to
+  start with Commander rather than `parseArgs`, and the behaviour changes an
+  existing Commander tool’s owner should hear about first. Docs only; the fence
+  and `CONTRACT` are unchanged.
+
 ## 0.3.0 — 2026-10-18
 
 Additive: the contract string stays `mjs-tool/2` and the runtime fence is

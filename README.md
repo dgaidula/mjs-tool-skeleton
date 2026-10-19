@@ -592,7 +592,8 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
 ## Requirements
 
 Node 20+ (for `node:util` `parseArgs` and `node --test`). Zero dependencies. No
-Python.
+Python. A tool that outgrows `parseArgs` can parse with Commander and keep the
+contract: ADOPTING.md §9.
 
 ## License
 
