@@ -51,6 +51,48 @@ tool apply   <path>... [--go]     # mutating: dry run, then --go to act
 Every text mode then ends with one `next:` line (below). `--json` cannot be
 combined with `--brief` or `--quiet`.
 
+**The cheat card (`--cheat`).** A tool should also print a short card of its
+common invocations, in [tldr](https://github.com/tldr-pages/tldr) page format,
+so a person who has forgotten a tool’s flags sees four useful lines instead of
+a screenful of `--help`, and a collector can gather every tool’s card into one
+place. The card comes from the tool, so it cannot drift from its flags the way
+a hand-written sheet does. `--cheat` is not an output mode: it prints the card
+to stdout, exits `0`, and prints nothing else. Combined with `--brief`,
+`--json` or `--quiet` it is a usage error (exit `2`, nothing on stdout), not a
+silent choice between them. `--help` and `--version` come first: beside
+either, `--cheat` is ignored and that flag’s output is printed, mode flags or
+not. It is a *should*: a tool without it is still
+`mjs-tool/2`, and the contract string and the runtime fence do not change.
+
+```
+# tool
+
+> Report on files and touch their modification times.
+> More information: tool --help.
+
+- Report what each path is, with its size:
+
+`tool inspect {{path/to/file1 path/to/file2 ...}}`
+
+- Simulate touching the modification time of files (dry run):
+
+`tool apply {{path/to/file1 path/to/file2 ...}}`
+
+- Touch the modification time of files:
+
+`tool apply {{path/to/file1 path/to/file2 ...}} --go`
+```
+
+The shape is exact: a title (the command name), a blank line, a `>` block whose
+last line is `More information: <tool> --help.`, then 3 to 6 examples of a
+sentence-case description ending in a colon, a blank line, and the command in
+backticks, each pair separated by a blank line. Descriptions are imperative
+(“Simulate”, not “Simulates”), values the user supplies are `{{placeholders}}`,
+and every command starts with the tool’s name. The card lives in one `CHEAT`
+constant beside the `--help` header; [`ADOPTING.md`](ADOPTING.md) §8 is the
+checklist for adding it to an existing tool, and `tldr --render card.md` shows
+how it will look.
+
 The **`--brief` line** is a verdict glyph, a fixed-width verdict word, a
 summary, and the item name — plus a parenthesised reason **whenever the verdict
 is not `ok`**. Refusals, warnings, and skips are never collapsed or dropped:
@@ -288,8 +330,8 @@ CLAUDE.md                     the agent-facing usage block, ready to keep
 LICENSE                       MIT © Danniel T. Gaidula
 ```
 
-Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the nine
-spots: the environment check, which targets need confirmation, the `inspect`
+Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the ten
+spots: the cheat card (`CHEAT`, printed by `--cheat`), the environment check, which targets need confirmation, the `inspect`
 report, the `apply` mutation, which commands mutate (`MUTATING_COMMANDS`),
 which of them may go on to `--go` unattended (`AUTO_RUN_COMMANDS`), the
 tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go`
@@ -355,6 +397,11 @@ scaffolded tool. It locks the contract:
   past ASCII runs in bash 3.2 and zsh.
 
 - `--help` prints the header, not code.
+
+- `--cheat` prints a tldr-format card (title, `>` block, 3 to 6 example pairs)
+  and nothing else, exits `0`, and is a usage error beside `--brief`, `--json`
+  or `--quiet`; `--help` and `--version` take precedence over it; a validator
+  rejects a malformed card, one broken card per rule.
 
 - a **symlinked invocation still runs `main()`** — the entry guard in the fence.
 

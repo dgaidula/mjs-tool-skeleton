@@ -170,6 +170,92 @@ test('--version prints "<name> <semver>"', () => {
   assert.match(r.stdout.trim(), new RegExp(`^${NAME} \\d+\\.\\d+\\.\\d+`));
 });
 
+// Parse a --cheat card as a tldr page, throwing a message that names the first
+// rule it breaks. The shape is the one the CHEAT comment in the tool spells out:
+// "# name", blank, "> " lines ending "> More information: name --help.", blank,
+// then 3 to 6 examples of "- what it does:", blank, "`name args`", blank-separated.
+// Copy this into an adopted tool's tests to prove its card is a page.
+function parseCheat(text) {
+  const fail = (m) => { throw new Error(`cheat card: ${m}`); };
+  if (!text.endsWith('\n') || text.endsWith('\n\n')) fail('must end with exactly one newline');
+  const lines = text.slice(0, -1).split('\n');
+  const title = /^# (\S+)$/.exec(lines[0]);
+  if (!title) fail('line 1 must be "# <tool-name>"');
+  const name = title[1];
+  if (lines[1] !== '') fail('line 2 must be blank');
+  let i = 2;
+  const description = [];
+  while (i < lines.length && lines[i].startsWith('> ')) description.push(lines[i++].slice(2));
+  if (description.length < 2) fail('the description block needs a purpose line and a "More information" line');
+  if (description.at(-1) !== `More information: ${name} --help.`) fail('the description block must end "More information: <tool-name> --help."');
+  const examples = [];
+  while (i < lines.length) {
+    if (lines[i] !== '') fail(`line ${i + 1} must be blank before an example`);
+    const [what, gap, cmd] = lines.slice(i + 1, i + 4);
+    if (!/^- [A-Z].*:$/.test(what ?? '')) fail(`line ${i + 2} must be "- Sentence-case description:"`);
+    if (gap !== '') fail(`line ${i + 3} must be blank between the description and the command`);
+    const m = /^`([\x20-\x7e]+)`$/.exec(cmd ?? '');
+    if (!m) fail(`line ${i + 4} must be the command in backticks, in plain ASCII`);
+    if (m[1] !== name && !m[1].startsWith(`${name} `)) fail(`line ${i + 4} must start with the tool name "${name}"`);
+    if ((m[1].match(/\{\{/g) ?? []).length !== (m[1].match(/\}\}/g) ?? []).length) fail(`line ${i + 4} has unbalanced {{placeholders}}`);
+    examples.push({ what: what.slice(2), cmd: m[1] });
+    i += 4;
+  }
+  if (examples.length < 3 || examples.length > 6) fail(`needs 3 to 6 examples, has ${examples.length}`);
+  return { name, description, examples };
+}
+
+test('--cheat prints a tldr page, exits 0, and prints nothing else (no command needed)', () => {
+  const r = run(['--cheat']);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const page = parseCheat(r.stdout);
+  assert.ok(page.examples.length >= 3);
+});
+
+test('--cheat refuses --brief, --json and --quiet as a usage error (exit 2, stdout empty)', () => {
+  for (const mode of ['--brief', '--json', '--quiet']) {
+    const r = run(['--cheat', mode]);
+    assert.equal(r.status, 2, mode);
+    assert.equal(r.stdout, '', mode);
+    assert.match(r.stderr, new RegExp(`--cheat and ${mode} cannot be combined`), mode);
+  }
+});
+
+test('the card validator rejects a malformed card', () => {
+  const good = run(['--cheat']).stdout;
+  assert.doesNotThrow(() => parseCheat(good));
+  const lines = good.slice(0, -1).split('\n');
+  const cmdAt = lines.findIndex((l) => l.startsWith('`')); // the first example's command line
+  const swap = (at, line) => `${lines.map((l, n) => (n === at ? line : l)).join('\n')}\n`;
+  const extra = lines.slice(cmdAt - 3, cmdAt + 1).join('\n'); // one example, its leading blank line included
+  // One broken card per rule, each matched to the message of the rule it breaks.
+  const broken = [
+    [good.replace(/^# \S+/, '#'), /line 1 must be/], // no title
+    [good.replace('\n', '\nx'), /line 2 must be blank/],
+    [good.replace(/\n> More information:.*\n/, '\n'), /needs a purpose line/], // no --help pointer
+    [good.replace(' --help.\n', ' -h.\n'), /must end "More information/],
+    [swap(cmdAt - 3, 'x'), /must be blank before an example/],
+    [good.replace(/:\n\n/, '\n\n'), /Sentence-case description/], // a description without its colon
+    [swap(cmdAt - 1, 'x'), /blank between the description and the command/],
+    [swap(cmdAt, lines[cmdAt].slice(1)), /command in backticks/], // no backticks
+    [swap(cmdAt, lines[cmdAt].replace(' ', ' \u2013 ')), /command in backticks, in plain ASCII/], // an en dash
+    [swap(cmdAt, lines[cmdAt].replace(/^`\S+/, '`other')), /must start with the tool name/],
+    [swap(cmdAt, lines[cmdAt].replace('}}', '')), /unbalanced/],
+    [good.split('\n\n').slice(0, 4).join('\n\n') + '\n', /needs 3 to 6 examples, has 1/], // too few
+    [`${[...lines, ...Array(6).fill(extra)].join('\n')}\n`, /needs 3 to 6 examples, has \d/], // too many
+    [good.replace(/\n$/, ''), /exactly one newline/], // no trailing newline
+    [good.replace(/\n$/, '\n\n'), /exactly one newline/], // a trailing blank line
+  ];
+  for (const [text, rule] of broken) assert.throws(() => parseCheat(text), rule, String(rule));
+});
+
+test('--help and --version take precedence over --cheat, even beside an output mode', () => {
+  assert.equal(run(['--cheat', '--help']).stdout, run(['--help']).stdout);
+  assert.equal(run(['--cheat', '--version', '--json']).stdout, run(['--version']).stdout);
+  assert.equal(run(['--cheat', '--help', '--json']).status, 0);
+});
+
 test('symlinked invocation still runs main() (realpath entry guard)', () => {
   const dir = tmp();
   try {

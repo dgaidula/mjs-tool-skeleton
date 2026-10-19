@@ -16,11 +16,15 @@
 // Usage:
 //   new-tool <name> [--dir <path>]
 //   new-tool <name> --brief
-//   new-tool --help | --version
+//   new-tool --help | --version | --cheat
 //
 // <name> must be a lowercase package name: a letter, then letters, digits, or
 // hyphens (e.g. my-widget). --dir is where the <name>/ folder is created
 // (default: the current directory).
+//
+// --cheat prints a short card of common invocations in tldr page format (the
+// CHEAT constant below) and exits 0, printing nothing else. It cannot be
+// combined with --brief, --json or --quiet.
 //
 // Output modes: (default) human, --brief (one line per created file), --json,
 // --quiet (summary line only). Every text mode ends with one `next:` line.
@@ -42,6 +46,29 @@ import {
 import { parseArgs } from 'node:util';
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/;
+
+// The cheat card (printed by --cheat): a tldr page, in the shape the skeleton's
+// CHEAT comment spells out (skeleton/tool.mjs). A backtick is escaped.
+const CHEAT = `# new-tool
+
+> Scaffold a single-file Node CLI from the mjs-tool-skeleton template.
+> More information: new-tool --help.
+
+- Create a new tool in a folder of its own, in the current directory:
+
+\`new-tool {{tool-name}}\`
+
+- Create a new tool in another directory:
+
+\`new-tool {{tool-name}} --dir {{path/to/directory}}\`
+
+- Create a new tool and print one line per file created:
+
+\`new-tool {{tool-name}} --brief\`
+
+- Create a new tool and print the result as JSON:
+
+\`new-tool {{tool-name}} --json\``;
 
 // ---- generated-file templates ----------------------------------------------
 
@@ -90,6 +117,10 @@ object), and \`--quiet\` (the summary line only). Every text mode ends with one
 \`next:\` line, the tool’s advice on the next step. \`--json\` cannot be
 combined with \`--brief\` or \`--quiet\`.
 
+\`${name} --cheat\` prints a short card of common invocations in
+[tldr](https://github.com/tldr-pages/tldr) page format, for \`tldr --render\`
+and for anything that gathers cards. Keep its examples true to the flags.
+
 ## Exit codes
 
 | code | meaning |
@@ -132,11 +163,12 @@ ${agentBlock}
 
 ## Filling in the tool
 
-Search \`${name}.mjs\` for \`TODO(tool):\` — those are the nine spots where
-this tool’s real work goes: the environment check, which targets need
-confirmation, the read-only \`inspect\` report, the \`apply\` mutation, which
-commands mutate, which of them may go on to \`--go\` unattended, the tool’s
-own override flags, its aliases of \`--go\`, and the next-action policy.
+Search \`${name}.mjs\` for \`TODO(tool):\` — those are the ten spots where
+this tool’s real work goes: the cheat card (\`--cheat\`), the environment
+check, which targets need confirmation, the read-only \`inspect\` report, the
+\`apply\` mutation, which commands mutate, which of them may go on to \`--go\`
+unattended, the tool’s own override flags, its aliases of \`--go\`, and the
+next-action policy.
 Keep the \`report()\` / \`verdict()\` / \`nextAction()\` shape intact: rendering
 every mode from one set of item objects is what guarantees the human,
 \`--brief\`, and \`--json\` outputs can never disagree.
@@ -213,6 +245,7 @@ async function main() {
       options: {
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean' },
+        cheat: { type: 'boolean' },
         dir: { type: 'string' },
         brief: { type: 'boolean' },
         json: { type: 'boolean' },
@@ -226,6 +259,13 @@ async function main() {
 
   if (values.help) { console.log(helpText()); return; }
   if (values.version) { console.log(`${TOOL_NAME} ${readVersion()}`); return; }
+  if (values.cheat) {
+    for (const mode of ['brief', 'json', 'quiet']) {
+      if (values[mode]) usageError(`--cheat and --${mode} cannot be combined`);
+    }
+    console.log(CHEAT);
+    return;
+  }
 
   const mode = outputMode(values);
 

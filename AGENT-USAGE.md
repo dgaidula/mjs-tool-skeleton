@@ -18,6 +18,8 @@ the command name). `new-tool` already drops it into every scaffolded tool’s
 
 - **Check the exit code, then read `next`:** `0` all ok · `1` partial (something warned, refused, or failed) · `2` usage error · `3` could not run to completion (an environment or internal error). **Exit `0` does not mean go** — a clean dry run exits `0` and can still say `ask`. On exit `2` or `3` there is nothing on stdout and no `next`: report stderr and halt.
 
+- **`<tool> --cheat`** prints a short card of the tool’s common invocations (a tldr page: a purpose line, then a handful of example commands). Read it when you need the usual command lines and not the full `--help`; it is not an output mode, and `--brief`, `--json` and `--quiet` are a usage error beside it.
+
 - **Quote back** the final summary line plus every non-`ok` line verbatim. That is the whole result — do not paraphrase a refusal into “done”.
 
 ### The babysit loop: run, read `next`, obey or halt

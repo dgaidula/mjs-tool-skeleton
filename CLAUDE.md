@@ -157,16 +157,31 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
     is the final `next:` line, whose form differs by mode (invariant 10). The
     golden test locks it — change it only on Dan’s say-so.
 
+14. **`--cheat` is a *should* and lives above the fence.** The `CHEAT`
+    constant, the `cheat` option and the short branch in `main()` are
+    the tool’s own code (so the fence, the `CONTRACT` string and every
+    adopted tool’s pinned fence hash are untouched; a contract addition of
+    this size lands as a skeleton minor version, not a runtime revision). The
+    branch sits right after `--version`, prints `CHEAT` with
+    `console.log`, and returns: `--cheat` is not an output mode, so it does
+    not go through `report()`, and a mode flag beside it is a usage error
+    (exit 2). The card is a tldr page; its exact shape is spelled out by the
+    comment above `CHEAT`, enforced by `parseCheat()` in the skeleton’s
+    tests, and relied on by the `cheat-pages` collector. A change to that
+    shape is a change to every adopted tool’s card. The adoption steps are
+    ADOPTING.md §8.
+
 ## The `<tool>` placeholder and substitution
 
 The skeleton’s **runtime** name comes from its own filename
 (`basename(realpath) - '.mjs'`), so a copied/renamed file reports the right
-name with no edit. Only the **header comment** (which doubles as `--help`) uses
-the literal placeholder `<tool>` for the command name. `new-tool` does exactly
+name with no edit. Only the **header comment** (which doubles as `--help`) and the
+`CHEAT` card use the literal placeholder `<tool>` for the command name. `new-tool` does exactly
 two substitutions when it copies the template:
 
-- in `<name>.mjs`: `<tool>` → the tool name (header only; there is no `<tool>`
-  in the code below the header);
+- in `<name>.mjs`: `<tool>` → the tool name, everywhere in the file: the
+  header and the `CHEAT` card (there is no other `<tool>` in the code, and
+  none in the fence);
 - in the test: the one locator expression
   `new URL('./tool.mjs', import.meta.url)` (the `TOOL_URL` line) →
   `new URL('../<name>.mjs', import.meta.url)`, because the scaffolded test lives in `test/` (one level

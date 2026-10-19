@@ -208,3 +208,68 @@ test('a scaffolded tool passes its own shipped tests (from a path with a space) 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// The title line and the commands of a --cheat card name the tool.
+function assertCardFor(name, card) {
+  const lines = card.split('\n');
+  assert.equal(lines[0], `# ${name}`);
+  assert.equal(lines.at(-2).startsWith(`\`${name}`), true, 'the last example is a command of this tool');
+  assert.ok(card.includes(`> More information: ${name} --help.\n`));
+  assert.doesNotMatch(card, /<tool>/);
+  const commands = lines.filter((l) => /^`.+`$/.test(l));
+  assert.ok(commands.length >= 3 && commands.length <= 6, `3 to 6 examples, has ${commands.length}`);
+  for (const c of commands) assert.ok(c.startsWith(`\`${name} `), `${c} starts with the tool name`);
+}
+
+test('a scaffolded tool prints a --cheat card under its own name, and tldr renders it', () => {
+  const dir = tmp();
+  try {
+    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
+    const tool = path.join(dir, 'my-widget', 'my-widget.mjs');
+    const r = spawnSync('node', [tool, '--cheat'], { encoding: 'utf8', timeout: 20000 });
+    assert.equal(r.status, 0);
+    assert.equal(r.stderr, '');
+    assertCardFor('my-widget', r.stdout);
+    // tealdeer is optional: when it is installed, the card must render, placeholders and all
+    const card = path.join(dir, 'my-widget.page.md');
+    writeFileSync(card, r.stdout);
+    const t = spawnSync('tldr', ['--render', card, '--color', 'never'], { encoding: 'utf8', timeout: 20000 });
+    if (!t.error) {
+      assert.equal(t.status, 0, t.stderr);
+      assert.match(t.stdout, /my-widget inspect path\/to\/file1 path\/to\/file2 \.\.\./);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The skeleton's parseCheat(), read from its test file rather than copied, so
+// the cards checked here meet the very rules an adopted tool's tests apply.
+const parseCheat = (() => {
+  const src = readFileSync(fileURLToPath(new URL('../skeleton/tool.test.mjs', import.meta.url)), 'utf8');
+  const start = src.indexOf('function parseCheat(text) {');
+  assert.ok(start >= 0, 'parseCheat() not found in the skeleton tests');
+  return new Function(`${src.slice(start, src.indexOf('\n}\n', start) + 2)}return parseCheat;`)();
+})();
+
+test('new-tool has its own --cheat card, and refuses it beside an output mode', () => {
+  const r = run(['--cheat']);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  assertCardFor('new-tool', r.stdout);
+  assert.equal(parseCheat(r.stdout).name, 'new-tool');
+  for (const mode of ['--brief', '--json', '--quiet']) {
+    const bad = run(['--cheat', mode]);
+    assert.equal(bad.status, 2, mode);
+    assert.equal(bad.stdout, '', mode);
+    assert.match(bad.stderr, new RegExp(`--cheat and ${mode} cannot be combined`), mode);
+  }
+});
+
+test('the example card in ADOPTING.md section 8 is a valid card', () => {
+  const doc = readFileSync(fileURLToPath(new URL('../ADOPTING.md', import.meta.url)), 'utf8');
+  const m = /^const CHEAT = `([\s\S]*?)`;$/m.exec(doc.replace(/\\`/g, '\u0000'));
+  assert.ok(m, 'no CHEAT example in ADOPTING.md');
+  const card = `${m[1].replace(/\u0000/g, '`')}\n`; // console.log adds the one newline
+  assert.equal(parseCheat(card).name, 'lint');
+});

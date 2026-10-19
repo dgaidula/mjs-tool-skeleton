@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-18
+
+Additive: the contract string stays `mjs-tool/2` and the runtime fence is
+byte-identical, so every adopted tool’s pinned fence hash still matches.
+
+- **`--cheat`: a tool prints its own tldr page.** A short card of common
+  invocations (a title, a `>` description block ending
+  `More information: <tool> --help.`, and 3 to 6 example pairs in tldr’s
+  `{{placeholder}}` syntax), rendered by `tldr --render` and gathered by a
+  collector, so a card comes from the tool and cannot drift from its flags.
+  It is a *should*, not part of the `mjs-tool/2` conformance bar: a tool
+  without it is still conformant. `--cheat` is not an output mode: it prints
+  the card, exits 0 and prints nothing else; beside `--brief`, `--json` or
+  `--quiet` it is a usage error (exit 2, nothing on stdout). The card lives
+  in a `CHEAT` constant above the fence; the template and `new-tool` itself
+  both ship one (a scaffolded tool gets its own name in it), and the
+  skeleton’s tests gain `parseCheat()`, a validator an adopted tool can copy.
+  Docs: README (the contract and the test list), AGENT-USAGE, and a new
+  ADOPTING.md §8 with the mechanical steps for an existing tool. Tests: 46 →
+  50 in the skeleton suite, 8 → 11 in the scaffolder suite.
+
 - **`ADOPTING.md`: the adoption procedure.** Callers, verdict meanings, `next`
   overrides, mutating-tool safety, tests and a done checklist, written from
   the 2026-10-03 adoptions (a linter, a renamer, and an AppleScript runner

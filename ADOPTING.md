@@ -460,6 +460,146 @@ gates:
 - If an agent is meant to drive a mutating tool, its runbook has a procedure
   with stop conditions, and names the flags only a person may pass.
 
+- A tool should also answer `--cheat` (§8). It is a *should*: a tool without
+  it is still conformant, and a conformance scan reports the absence without
+  failing the tool.
+
+## 8. The cheat card: adding `--cheat` to a tool
+
+`--cheat` arrived in skeleton 0.3.0. It is a *should*, additive: a tool
+without it is still `mjs-tool/2`, and nothing here touches the runtime fence,
+the `contract` string or any pinned fence hash, so an adopted tool’s fence
+tests stay green. The change lives entirely above the fence, in five places.
+Do them in order; each is mechanical.
+
+1. **Find the command name.** The card’s title and every command in it use
+   the name a person types: the key in `package.json`’s `bin`, or the name
+   of the wrapper or alias, not necessarily the file’s basename. The card is
+   written with that name literally. (The template’s `<tool>` is only the
+   scaffolder’s placeholder.)
+
+2. **Register the flag.** Add `cheat: { type: 'boolean' }` to the options
+   `parseArgs` is given, beside `help` and `version`. A tool that gives each
+   command its own flag list parses `--cheat` before it dispatches, in the
+   same place it handles `--help`, since the flag belongs to no command. If
+   the tool already has a `--cheat` that means something else, stop and
+   report it: that is a rename decision for the owner.
+
+3. **Handle it beside `--help` and `--version`**, after them, before the
+   command is looked up:
+
+   ```js
+   if (values.cheat) {
+     for (const mode of ['brief', 'json', 'quiet']) {
+       if (values[mode]) usageError(`--cheat and --${mode} cannot be combined`);
+     }
+     console.log(CHEAT);
+     return;
+   }
+   ```
+
+   `console.log` and a plain `return` are the same exit path `--help` takes:
+   the runtime exits `0` once stdout has flushed. The combination with an
+   output mode is a usage error (exit `2`, nothing on stdout) because
+   `--cheat` is not an output mode, and silently preferring one flag over
+   another is how a caller gets the wrong shape. The tool’s older aliases of
+   `--brief` or `--quiet` (`--summary`) belong in that list.
+
+4. **Write the `CHEAT` constant** above `main()`, beside the header. It is a
+   template literal with its backticks escaped and no trailing newline (the
+   `console.log` adds the one), and every card line starts in column 0, since
+   a tldr page is not indented:
+
+```js
+const CHEAT = `# lint
+
+> Check Markdown files against the house style.
+> More information: lint --help.
+
+- Check files and report every finding:
+
+\`lint check {{path/to/file1 path/to/file2 ...}}\`
+
+- Check a whole folder, one line per finding:
+
+\`lint check {{path/to/directory}} --brief\`
+
+- Simulate fixing the findings that can be fixed:
+
+\`lint fix {{path/to/file}}\``;
+```
+
+The shape, which a test enforces:
+
+- line 1 is `# <name>`, line 2 is blank;
+
+- then the `>` block: one or two lines saying what the tool does to what (a
+  noun phrase or an imperative, no “This tool …”), and last exactly
+  `> More information: <name> --help.`;
+
+- then 3 to 6 examples, each a blank line, `- Description:`, a blank line,
+  and the command in single backticks. The description is one sentence,
+  sentence case, imperative (“Report”, “Simulate”), ending in a colon; the
+  command starts with the name;
+
+- user-supplied values are `{{placeholders}}` in the tldr style
+  (`{{path/to/file}}`, `{{pattern}}`; several as `{{path/to/file1 path/to/file2
+  ...}}`), never a bare `<path>`;
+
+- plain ASCII in the commands and placeholders; typographic punctuation is
+  fine in the prose lines.
+
+5. **Add it to the header**, so `--help` and the card agree: `--cheat` on the
+   `Usage:` line beside `--help | --version`, and a Flags line
+
+   ```
+   //   --cheat     print a short card of common invocations in tldr page format
+   //               (the CHEAT constant below) and exit 0, printing nothing else.
+   //               It cannot be combined with --brief, --json or --quiet.
+   ```
+
+**Choosing the examples** is the part that takes judgment, and the only part
+a sweep should not guess at:
+
+- Write the invocations the owner actually types, most common first. Read the
+  tool’s README, its callers (§1 found them) and its tests for them. Three
+  honest examples beat six padded ones.
+
+- A read-only command first, then a mutating one as a *dry run*, then the same
+  command with `--go` as its own example (“Simulate …” for the dry run is
+  the tldr word). A card never shows `--yes`, `--force` or any override flag.
+
+- Spend no slot on `--help` or `--version`; the `More information` line
+  already points at help. Spend one on `--brief` or `--json` only when the
+  tool is usually driven by scripts, not for form’s sake.
+
+- Use long options (`--output`, not `-o`) so the card reads without a
+  decoder, and keep the flags in the order the tool’s `--help` lists them.
+
+- An example that would be destructive if pasted unchanged uses placeholders
+  for its targets, so it cannot run by accident.
+
+**Prove it.**
+
+- Add the card tests: copy `parseCheat()` and the two `--cheat` tests from
+  `skeleton/tool.test.mjs` into the tool’s tests, and add one assertion that
+  the title is the command name. They check the shape above, exit `0`, empty
+  stderr, and the usage error beside each output mode.
+
+- Render it as the reader will: `tool --cheat > /tmp/card.md && tldr --render
+  /tmp/card.md` (tealdeer; `tldr --render` takes a file). Placeholders show
+  highlighted and the title line is not printed, which is tldr’s way.
+
+- Run `tool --cheat --json`: exit `2`, nothing on stdout.
+
+- Add the changelog line (`--cheat added`) and one line to the README’s
+  usage section.
+
+Done means: the five edits, the tests green, the render checked, and the
+examples read against the real flags. A sweep over many tools reports each
+tool’s examples to its owner for the judgment above, since they are the one
+part no test can check.
+
 ## Open items for the skeleton
 
 1. **A declared name and version.** A hook so a tool shipped as `lint.mjs`,

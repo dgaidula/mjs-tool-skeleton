@@ -8,7 +8,7 @@
 // Usage:
 //   <tool> inspect <path>...            read-only: report each path
 //   <tool> apply   <path>... [--go]     mutating: dry run, then --go to act
-//   <tool> --help | --version
+//   <tool> --help | --version | --cheat
 //
 // Commands:
 //   inspect   Read-only. Reports each path (file vs directory, size). Never
@@ -48,6 +48,9 @@
 //   --quiet     summary line only.
 //   --help, -h  print this header.
 //   --version   print "<tool> <version>" (version read from package.json).
+//   --cheat     print a short card of common invocations in tldr page format
+//               (the CHEAT constant below) and exit 0, printing nothing else.
+//               It cannot be combined with --brief, --json or --quiet.
 //
 // Conventions that make it safe unattended:
 //   - Data goes to stdout; every diagnostic and prompt goes to stderr. In
@@ -69,6 +72,40 @@ import { statSync, utimesSync } from 'node:fs';
 import { basename } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline/promises';
+
+// ---- the cheat card (printed by --cheat) ------------------------------------
+//
+// A tldr page (github.com/tldr-pages/tldr), so `tldr --render` shows it and a
+// collector can gather every tool's card. It sits beside the --help header
+// above so it changes in the same edit as the flags it shows. Keep this exact
+// shape: a title line; a blank line; two ">" lines (what the tool does to what,
+// then the --help pointer); then 3 to 6 examples, each "- what it does:", a
+// blank line, and the command in backticks, with a blank line between
+// examples. Write each description in the imperative ("Report ...", "Simulate
+// ..."), put user-supplied values in {{placeholders}}, and start every command
+// with the tool's name. A backtick inside the template literal is escaped.
+// TODO(tool): replace the purpose line and the examples with this tool's real,
+// most common invocations.
+const CHEAT = `# <tool>
+
+> Report on files and touch their modification times.
+> More information: <tool> --help.
+
+- Report what each path is, with its size:
+
+\`<tool> inspect {{path/to/file1 path/to/file2 ...}}\`
+
+- Report the same, one line per path:
+
+\`<tool> inspect {{path/to/file1 path/to/file2 ...}} --brief\`
+
+- Simulate touching the modification time of files (dry run):
+
+\`<tool> apply {{path/to/file1 path/to/file2 ...}}\`
+
+- Touch the modification time of files:
+
+\`<tool> apply {{path/to/file1 path/to/file2 ...}} --go\``;
 
 // ---- verdict semantics (the single source of truth) -------------------------
 //
@@ -325,6 +362,7 @@ async function main() {
       options: {
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean' },
+        cheat: { type: 'boolean' },
         brief: { type: 'boolean' },
         json: { type: 'boolean' },
         quiet: { type: 'boolean' },
@@ -343,6 +381,13 @@ async function main() {
   }
   if (values.version) {
     console.log(`${TOOL_NAME} ${readVersion()}`);
+    return;
+  }
+  if (values.cheat) {
+    for (const mode of ['brief', 'json', 'quiet']) {
+      if (values[mode]) usageError(`--cheat and --${mode} cannot be combined`);
+    }
+    console.log(CHEAT);
     return;
   }
 
