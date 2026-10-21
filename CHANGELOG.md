@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **ADOPTING.md: lessons from five more adoptions, and open item 2 done.**
+  Five adoptions run as a queue on 2026-10-16 (a key-expiry checker, a
+  settings-schema snapshotter, an archiver that deletes files with the test
+  runner it drives, a deploy-key manager, and a transcript-size reporter) add
+  rules, each marked with its phase: an adoption never adds an approval or
+  stops automation (every unattended caller passes `--go`, and a test reads the
+  documents for one that does not); `--brief` is always brief and wins over
+  human; the old `--json` object moves to `state`; an old confirmation prompt
+  goes; a secret-bearing input is never echoed; steps as items, the way back
+  after a partial failure, and a re-list standing in for `lstat` on a remote
+  API; and the plan-digest cache treated as untrusted input. Open item 2, a
+  conformance check that hashes the fence body, now exists in a conformance
+  scanner, and §6 and the item define the hash (the runtime block from the
+  opening fence line through the closing line, markers included) and its four
+  states: unedited, edited, unknown, not-checked. Docs only; the fence and
+  `CONTRACT` are unchanged.
+
 - **ADOPTING.md §9: adopting with Commander.** A Commander-based tool keeps
   its parser and adopts `mjs-tool/2`: the rules, a `main()` head checked
   against the skeleton’s own contract suite (50/50, commander 15), when to

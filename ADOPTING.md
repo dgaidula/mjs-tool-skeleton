@@ -15,6 +15,10 @@ for legacy AppleScripts and a generator whose output reaches every machine,
 followed the draft, went through their own gates, and reported where it fell
 short; a fifth, an unattended watcher that launches agent sessions, and a
 sixth, a personal-finance CLI with a live server beside it, did too.
+Five more, in the migration queue that followed (2026-10-16: a key-expiry
+checker, a settings-schema snapshotter, an archiver that deletes files and the
+test runner it drives, a deploy-key manager, and a transcript-size reporter),
+added the rules that cite a phase, such as “(S10)”.
 Every rule below is either something one of them got wrong first or a
 question one of them had to settle.
 
@@ -40,14 +44,36 @@ on it before you touch it.
 - **A command that gains the dry-run gate for the first time is the riskiest
   change an adoption makes.** Every old command line still parses, but now
   only previews: it exits 0 having done nothing, and keeping old flags as
-  aliases does not help. Find every caller that ran the command end to end
-  and decide, per caller, whether it adds `--go` or stops at `ask`.
+  aliases does not help. Find every caller that ran the command end to end.
+  An unattended one (an npm script, a routine, another tool, an agent
+  runbook) adds `--go` and keeps running, with no new prompt and no new `ask`,
+  and a test proves each one: an adoption never adds an approval or stops
+  automation (S10). A printed hint or a README example for a person carries
+  the `--go` it now needs, or the reader lands on a preview (S11). If a change
+  would block an automated caller, raise it with the tool’s owner before
+  building it. Keep what the caller relied on, too: a test script that
+  used to launch a stopped app and now exits 3 has stopped automation as
+  surely as a missing `--go` (S10).
+
+- **Pin it with a test that reads the documents.** Search `package.json`
+  scripts, the README and every runbook for invocations of the command, and
+  fail on any without `--go`. A runbook line without it only previews, and
+  nothing else notices (S10).
 
 - **The inverse case: an old flag that names a command *and* means “now”**
   (`--write`, which wrote immediately). Its callers expect it to act, so it
   maps to `<command> --go` and stays the one spelling that skips the preview.
   Put it in `GO_ALIASES`, normalise it out of the `argv` that `next` reads, and
   document that it is the no-preview path.
+
+- **An old confirmation prompt** (`proceed? [y/N]`) goes, with or without a
+  TTY: `--go` is the confirmation and the dry run is the plan. Its pre-confirm
+  flag (`--yes`) is a `GO_ALIASES` entry, the case above, since it always meant
+  “act without asking”. First measure the old tool with stdin at end of file
+  and with stdin an open pipe: the one adopted printed the prompt and exited 0
+  having done nothing, or hung. A test that keeps stdin open and writes
+  nothing proves a destructive `--go` finishes. A confirmation at a terminal
+  on deletes is an addition, and the owner’s call (S11).
 
 - **A scheduled caller under `set -e`.** A read-only command that always
   exited 0 now exits 1 on findings, and a wrapper that runs it under `set -e`
@@ -57,6 +83,14 @@ on it before you touch it.
   field of a brief line cannot tell a name with a space from a long label, and
   an old `cut -f1` over human output turns every word into a name. Test which
   names the wrapper acted on, not just its exit code.
+
+- **A caller that branched on distinct exit codes** (2 for expired, 3 for
+  missing) cannot keep them: the contract uses 1 for every finding, 2 for
+  usage and 3 for a crash. Put the kind in the item’s `data` (`data.state`) and
+  move the caller to `--json`, so it branches on the kind, not the code. It
+  reads stdout only: with `2>&1`, a warning the tool prints on stderr ahead of
+  the JSON breaks the parse, so send stderr to a temporary file and use its
+  first line only for a no-result log line (S8).
 
 - **Callers that display a line of output,** not just its exit code (a status
   line clipped to a fixed width, a refusal message quoting the last line). The
@@ -78,6 +112,12 @@ on it before you touch it.
 - **Rename in its own commit.** A `.js` → `.mjs` rename plus a heavy rewrite
   in one commit reads to git as a delete and an add, and blame stops there.
   Commit the pure rename first.
+
+- **Check the file mode.** A caller that runs the file directly gets exit
+  126 from a 100644 file, and a routine says nothing: one adopted checker’s
+  near-expiry warning had probably never fired for that reason. Run the tool
+  the way each caller does, and `git update-index --chmod=+x` if it needs it
+  (S8).
 
 - **Move module-scope CLI code into `main()`.** Argument parsing, config
   loading and any `process.exit` at the top level all move. Finish every
@@ -106,18 +146,43 @@ on it before you touch it.
   the `--flag=-x` form, and
   no arguments at all is a usage error.
 
+- **Arguments that reach another program’s argv are validated.** A box name
+  that starts with `-` becomes an option (`-oProxyCommand=…` handed to `ssh`):
+  refuse a name that starts with `-` or is all dots, as a usage error, or put
+  a `--` before it (S11). Numbers are whole or range-checked, and an empty
+  value for a path flag is a usage error, never a quiet fallback to the
+  default location (S12).
+
 - **A command whose output is the product** (decompiled source, a child
   program’s output) moves it into item `data` or into a named output file:
   stdout belongs to the report. `tool decompile > file` stops working, so say
   so in the changelog.
 
+- **The old `--json` object moves to `state`.** The contract fixes `--json`’s
+  top-level keys, so the old report cannot sit beside them. Put it in `state`
+  exactly as it was, so a reader moves with `jq .state`, and prove it: run the
+  old and the new tool on the same unmoving input and compare the old output
+  with `.state` by deep equality, for each set of flags (S10, S12). Say so in
+  the changelog.
+
 - **A wrapper does not pass a child’s exit code through.** A child that
   failed or timed out (exit 124, say) is a `fail` item with the code in its
-  `data`; the tool’s own exit stays 0, 1, 2 or 3.
+  `data`; the tool’s own exit stays 0, 1, 2 or 3. A wrapper over `ssh` also
+  tells exit 255, the connection itself failing (an unreachable box: `fail`),
+  from the remote command’s own exit, so an unreachable box is not reported as
+  “no key on the box” (S11).
+
+- **A tool that runs another tool of the contract** starts it with
+  `process.execPath`, not `node` from `PATH`, and with `--quiet`; reads its exit
+  code by the contract (3 means it could not run, and the parent says so in its
+  own words); and points its `TMPDIR` at a directory of the parent’s own,
+  removed afterwards (S10).
 
 - **`next`’s `why` is capped at 200 characters.** Build it from the item’s
   name, its summary and a short remedy, not from a reason that carries a long
-  temporary path.
+  temporary path. Clip the name and the summary to fit, never the remedy: with
+  real nine-digit ids the command in a `why` was cut off mid-flag, and the test
+  now uses real-size ids (S11).
 
 - **A flag whose job the contract now does** (an exit-code switch such as a
   `--ci` that made findings fail) stays accepted as a documented no-op.
@@ -136,16 +201,38 @@ on it before you touch it.
 - **Shape-check local inputs per command, before use.** Valid JSON of the
   wrong shape (`null`, an object where an array belongs) otherwise escapes as
   an unnamed `TypeError` at exit 3. Check the top-level shape of each file the
-  command loads and report it as a `fail` item that names the file.
+  command loads and report it as a `fail` item that names the file. A reply
+  from an API or a program that exits 0 but is not the shape expected (not a
+  list of keys) is the same `fail` item (S11).
 
 - **Keep sensitive data out of every mode.** An item’s `name` and `path`
   print in every mode, and `data` prints in `--json`. When a file name is
   itself personal (an account number), name the item by a label and leave
   `path: null`; scrub raw input rows in `data` down to the fields the reader
   needs. Whole rows leaked account numbers into one adoption’s `--json`.
+  An input that may hold a secret (a key file, a token line) is never echoed,
+  in any mode, log or notification: report the parsed value, and on a parse
+  failure say what is wrong and how long the input was (`not a date (23
+  characters)`), not the text. Parse strictly: V8’s `Date` ignores a
+  parenthesised tail, so a key after a valid date still reached the output.
+  Match an explicit format, and end a captured value at every line break,
+  U+2028 and U+2029 included. Test by planting the secret in every position
+  the grammar allows and searching every mode, and every caller’s log, for a
+  fragment of it (S8).
 
 - **Progress goes to stderr, in human mode only.** `--brief`, `--quiet` and
   `--json` stay silent: an agent pays for every line.
+
+- **`--brief` is always brief, and wins over human.** When the two pull apart,
+  shape the items for `--brief`: one item per table or group, its rows in
+  `data`, and the old human layout carried in the item’s `lines`, which only the
+  human renderer prints. The human mode adapts. A reporter whose table rows
+  each became an item had a `--brief` of 134 lines; one item per table made it
+  17, with a human mode four lines longer than the old output (S12). An
+  archiver gave every clean series one `series-group` item, and its own item
+  only to a series refused, failed or kept, so on a clean folder `--brief`
+  stays three lines at 50 series and at 500 (S10). Check `--brief`’s size against the old output, at
+  a size that matters.
 
 - **`--json` is built as one string.** `report()` serialises the whole object
   at once, which fails past a few hundred megabytes (around a million and a
@@ -281,6 +368,13 @@ it:
   run’s own argv carries that flag, or the guard refuses the advice and the
   run exits 3.
 
+- **A tool whose run is the point** (a test runner that drives an app) still
+  declares its side effect: a bare run previews, and `--go` runs. When its
+  callers are unattended and the owner has said so, list the command in
+  `AUTO_RUN_COMMANDS`, so the preview’s `next` is `run … --go` and not a new
+  `ask`; an override flag in the preview still asks. Every caller passes `--go`
+  itself all the same (S10).
+
 ## 5. A mutating tool’s safety
 
 The fence guarantees only that advice reading `run … --go` repeats the dry
@@ -292,7 +386,11 @@ gates:
   counts as existing). That narrows the window but does not close it. Where
   “never replace” must hold, use an operation that fails on an existing
   target: `link` then `unlink` for a rename, `open(…, 'wx')` or
-  `copyFile(…, COPYFILE_EXCL)` for a write.
+  `copyFile(…, COPYFILE_EXCL)` for a write. A remote API has no `lstat`: the
+  equivalent is to list again just before each destructive or creating call
+  and check identity (the id, the key’s body, its access), refusing on any
+  change. A listing taken right after a delete can lag, so never count the id
+  just deleted (S11).
 
 - **Compare names the way the filesystem does.** Case-insensitive and
   normalization-insensitive volumes treat `Mad About You` and `Mad about You`,
@@ -327,11 +425,18 @@ gates:
 
 - **Re-verify what you rely on, not just what you touch.** A cull that keeps
   one copy must re-check that copy at the moment it moves the others; one
-  that checked only the copies being moved could move the last one.
+  that checked only the copies being moved could move the last one. The
+  copy kept must itself be a regular file (`lstat`, not `stat`), not the same
+  inode as any file the run deletes, and look like what it claims (a
+  document’s magic header): a symlinked keeper pointing at a doomed file let a
+  `--go` delete a series’ last copy (S10).
 
 - **Treat repositories and packages as wholes.** A tool that moves or deletes
   leaves alone anything with a `.git` above it, and anything inside an app or
-  document package, however redundant the single file looks.
+  document package, however redundant the single file looks. Skip every
+  dot-directory too, and refuse a folder named inside one: a sync tool’s
+  archive and trash folders hold recovery copies, and a walk that entered them
+  deleted those (S10).
 
 - **Never overwrite an output file the tool did not write.** Check for the
   tool’s own header line before replacing an existing output, even under
@@ -349,6 +454,11 @@ gates:
   the inputs hold then, not on what was previewed. Where that can damage data,
   carry a plan digest; elsewhere, document the drift and have the runbook
   check that what `--go` did matches what the dry run’s `ok` lines promised.
+  Where the tool re-checks the one thing that could do harm right before
+  acting and refuses on any change (a key’s id, body and access), a digest adds
+  little: say in the README that `--go` re-plans from the world as it is now,
+  and have the `--go` items name what they act on (id, fingerprint, title), so
+  a person can compare them with the preview (S11).
 
 - **A plan digest, where drift can damage data.** The fence needs no change:
   its guard constrains only `run … --go` advice, and an `ask` argv may carry
@@ -366,17 +476,44 @@ gates:
   - *Under `--go --plan <hex>`* the tool recomputes the plan. On a mismatch it
     acts on nothing: one `refuse` item naming what changed, exit 1, `next: ask`
     for a fresh dry run. A `--go` without `--plan` works as it always has, so
-    hand use is unchanged.
+    hand use is unchanged. A replay of a plan that already landed says
+    “already applied”. `--plan` without `--go`, or a value that is not 16
+    lowercase hex, is a usage error (S9, S10).
   - *To name what changed,* the dry run caches its record by digest in the
     user cache directory (an absolute `$XDG_CACHE_HOME`, else the platform’s,
     such as `~/Library/Caches/<tool>`), never beside the data it acts on. A
     change in `dev` alone is named as a likely remount, not as new files.
+    Treat that cache as untrusted input: directory 0700, records 0600 written
+    by temp file and rename, records older than a week pruned on write; on
+    load, open with `O_NONBLOCK`, accept a regular file only, and check its
+    shape and that it hashes to its own name. A FIFO or a forged record is a
+    refusal that cannot itemise the change (exit 1), never a hang or exit 3
+    (S9, S10).
   - *In a runbook,* run one `--json` dry run, read `next.argv` with `jq`, and
     paste the advised command as literal text. Never run it through `eval`:
-    a command guard cannot see the `--go` inside.
+    a command guard cannot see the `--go` inside. A runbook that applies
+    unattended does so only through the advised command, only when the dry
+    run’s items match what it just reviewed (compared with `jq` and `cmp`),
+    and with no advised command it applies nothing (S9).
   - *Tests:* a dry run, then an input change, makes the advised `--go` refuse
     with the change named; an unchanged plan applies exactly as before; and
     `--brief` output is byte-identical to what it was without the digest.
+  - *Guards do not wait for the digest.* A last-copy or repository guard runs
+    under every `--go`, plain ones too: a guard that holds only when someone
+    remembered `--plan` is no guard (S10).
+
+- **An ordered sequence of side effects is a list of steps,** one item each
+  (generate a key, register it, set the remote), with the exact argv in
+  `data.command`. Preview and run read the same step objects, so they cannot
+  disagree, and `--brief` shows the whole plan. On a failure part-way the rest
+  are `skip` “not attempted” (S11).
+
+- **After a step that already changed the world, a later failure names the way
+  back:** what is now true, and the exact command that restores it (`old key N
+  is deleted; the box has no access until: …`), written as the dry run, not as
+  a `--go`. When a call fails ambiguously (a timeout; the effect may have
+  landed), look once more and report what is there (“still listed, so probably
+  not deleted”) instead of guessing (S11).
 
 - **A partial `--go` is legitimate** (act on the `ok` items, leave the
   findings) as long as the item lines make plain what it leaves. On a failure
@@ -384,12 +521,17 @@ gates:
 
 ## 6. Tests
 
-- **Pin the fence by hash in the tool’s own tests** (sha256 of the block
-  against `skeleton/tool.mjs`), then write tool-specific tests instead of
-  porting the runtime suite, which would re-test identical bytes: dry run
-  against `--go`; `--go` acts only on what was previewed; every exit code;
-  `--help`, `--version` and a symlinked entry; `--brief` and `--json`
-  snapshots.
+- **Pin the fence by hash in the tool’s own tests,** then write tool-specific
+  tests instead of porting the runtime suite, which would re-test identical
+  bytes: dry run against `--go`; `--go` acts only on what was previewed; every
+  exit code; `--help`, `--version` and a symlinked entry; `--brief` and `--json`
+  snapshots. The block is the text from the first character of the opening
+  fence line through the last character of the closing fence line, markers
+  included, hashed with sha256 and compared with the same block in
+  `skeleton/tool.mjs` for the same runtime version. The newline after the
+  closing line is not part of it, and a hash taken with it is a different
+  value, so say which one a pinned value covers (S8). A conformance scanner
+  runs the same check for any adopter (open item 2).
 
 - **Porting a suite that asserted on the old text** (especially stderr): keep
   the old invocations, so they double as alias coverage, and move the
@@ -415,13 +557,23 @@ gates:
   a target that appears mid-run, a broken symlink at the target, alias paths
   to one file, a file past the first read chunk.
 
+- **A tool that checks what another program will read parses it as that
+  program does,** and a test runs both on the same files: lines that end at LF
+  only, a no-break space, an inline comment, a locale. A checker said `ok`
+  while the shell reader took a different line, or an empty key (S8).
+
 - **A tool that calls other programs is tested against stubs.** Put a stub
   directory first on `PATH` and leave the real binaries’ directories off it,
   so a missing stub fails loudly instead of reaching the real program. Write
   the stubs with shell builtins only, have them log their arguments, and
   assert on the log (an empty log proves a dry run executed nothing). A stub
   that must outlive a timeout `exec`s its sleep, so the timeout kills the stub
-  itself.
+  itself. A stub can also change the world while a batch “runs” (a knob that
+  deletes a kept file, swaps one for another, creates a `.git`), which tests
+  the last-copy and similar guards without a hook in the tool (S10). In every
+  dry run, assert that each logged call matches one of the named read-only
+  patterns, as a table test over the scenarios, so a new call that mutates
+  cannot slip in (S11).
 
 - **Every test that runs the tool gets the stubs, not just the ones about the
   external program.** A tool that can start a paid or side-effecting program
@@ -435,7 +587,18 @@ gates:
   fixture directory set explicitly. Compose the test `PATH` as the stub
   directory, Node’s own directory and `/bin` (not the inherited `PATH`, which
   reaches real `notify`, `pbcopy` and the like), and add an `after()` hook
-  that fails the suite if a guard stub was called.
+  that fails the suite if a guard stub was called. Point `HOME`, `TMPDIR` and
+  `XDG_CACHE_HOME` at empty directories too, so a test that forgot the fixture
+  flag fails (exit 3 on a missing root) instead of reading the real tree (S10,
+  S12).
+
+- **A suite leaves nothing behind.** Make every temp directory through one
+  helper, and register the `after()` that removes them before the first one is
+  made (a guard hook that fails the suite otherwise skips the cleanup). Prove it
+  by running with `TMPDIR` pointing at an empty directory and checking it is
+  empty afterwards. Adopted suites and tools left directories behind in the
+  temp directory (34 in one, 284 in another), and one would have whenever its
+  guard failed (S8, S9, S10, S12).
 
 - **A test that kills a child attaches its `close` listener before `kill()`,
   and has a timeout.** Otherwise a child that already exited hangs the whole
@@ -704,8 +867,21 @@ to preview, where the contract dry-runs by default and needs `--go`.
 1. **A declared name and version.** A hook so a tool shipped as `lint.mjs`,
    or deployed without its `package.json`, can say what it is.
 
-2. **A conformance check that hashes the fence body,** so “unedited” is
-   checked, not asserted, by a command any adopter can run.
+2. **A conformance check that hashes the fence body.** Done, with no fence
+   change: a conformance scanner hashes the runtime block, from the first
+   character of the opening fence line through the last character of the
+   closing fence line (markers included, the newline after it not), with
+   sha256, and compares it with the same block in `skeleton/tool.mjs` for the
+   same runtime version. A tool’s fence is *unedited* (same hash), *edited*
+   (the same version and a different hash; the scanner names the first
+   differing fence line, and this is the one state that changes a verdict),
+   *unknown* (the skeleton has no block for that version, or the tool’s fence
+   has no closing line or opens twice), or *not-checked* (no readable skeleton
+   to compare with). The fence stays out of the conformance score. The check
+   cannot see an edit outside the fence or to the fence line itself, and a tool
+   kept on an older point release of the same runtime version reads as edited.
+   §6 gives the same definition for a tool’s own test. The number stays so
+   earlier references still resolve.
 
 3. **A plan digest.** Done, with no fence change: the recipe is in §5 (“A
    plan digest, where drift can damage data”). The number stays so earlier
@@ -720,18 +896,21 @@ to preview, where the contract dry-runs by default and needs `--go`.
    heading wherever the group changes. `--brief`, `--json` and the contract
    string stay as they are. Severity stays out of the verdict (§3) and lives in
    the tool’s `data` and summary. Until then, sort the items by group and put
-   the group at the start of each summary (`ACT call ITM …`).
+   the group at the start of each summary (`ACT call ITM …`). Where the groups
+   are tables, one item per table whose `lines` hold the old rows and whose
+   `data` holds them as fields does the job today (§2, “`--brief` is always
+   brief”).
 
 5. **`effect` for a read-only command that writes a new output file.** The
    adoptions reported `effect: "read-only"` with the item’s `changed: true`;
    the contract does not yet say whether that pairing is right.
 
 6. **Batch the fence revisions.** Items 1 and 4 each change the fence itself
-   (item 3 did not; see §5). The fence is byte-identical in every
+   (items 2 and 3 did not; see §5). The fence is byte-identical in every
    adopted tool, and seven test suites pinned its sha256 on 2026-10-03, so any
    edit turns each of them red and means a mechanical swap in every adopted
    repo. Items 1 and 4 are cosmetic and cost agents nothing, so they wait for
    whatever next forces a fence revision, and ride along with it. A revision that leaves the `--brief` lines, the
    `--json` keys and the exit codes as they are is a new runtime revision, not a
-   new contract: `contract` stays `mjs-tool/2`. Item 2 lives in the scanner,
-   not the fence, and can land on its own.
+   new contract: `contract` stays `mjs-tool/2`. Item 2 lived in the scanner,
+   not the fence, and landed on its own.
