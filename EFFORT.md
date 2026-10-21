@@ -17,3 +17,4 @@ holds those. Git author is the machine identity, not who did the work.
 | 2026-10-19 | gate subagent (Claude Opus 5.5) [xhigh] | verifier | gate on --cheat: PASS WITH FINDINGS — ADOPTING example fails its validator, non-ASCII accepted, test gaps; fence intact | 12.0m | 149311 | 49 | recovered |
 | 2026-10-19 | fixer subagent (Claude Opus 5.5) [medium] | fixer | seven --cheat findings; 61 tests; fence unchanged | 6.9m | 95671 | 36 | success |
 | 2026-10-19 | gate subagent (Claude Opus 5.5) [xhigh] | verifier | re-check of --cheat fix pass: 6/7 closed (skel-scan reason assertion self-fixed by orchestrator) | 4.5m | 166945 | 13 | recovered |
+| 2026-10-21 | Claude Sonnet 5.5 (claude-sonnet-5-5[1m]) [high] via dgbuilder | builder | ADOPTING.md: lessons from S8-S12 folded in and open item 2 (fence-body hash) marked done, docs only, local commit 425bf10 for Dan's read (D121) (exact metrics from the completion record) | 6.3m | 186825 | 27 | success |
