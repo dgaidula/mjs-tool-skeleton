@@ -907,7 +907,8 @@ for a malformed hook (`contract mjs-tool/2: declare …` becomes
    override where it has one (`MJS_TOOL_SKELETON=<checkout>`), otherwise with
    `HOME` set to a scratch directory in which the path the test reads under
    `HOME` (such as `sw/github-public/mjs-tool-skeleton`) is the branch
-   checkout.
+   checkout. Confirm the live-checkout test actually ran (`skipped 0`): a
+   wrong `HOME` layout makes it skip, which reads as green.
 
 3. **Update the tests that pin brief lines.** Search the tool’s tests for
    brief item lines written out in full, for the glyphs (`✓ ⚠ • ⊘ ✗`), for

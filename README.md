@@ -102,7 +102,7 @@ longer than 160 characters is cut at 160 and ends `… (+N chars; --json for
 all)`, where N is the number of characters cut, counted in the reason itself
 (code points, before a control character is shown as its escape, so the cut
 never falls inside an escape). (The cut applies only where it shortens the
-reason: the note is about 30 bytes, so for ASCII a reason of 161 to 191
+reason: the note is about 30 bytes, so for printable ASCII a reason of 161 to 191
 characters prints whole; fewer for multi-byte text, since the comparison is in
 bytes. `--brief` still never grows past human.)
 Refusals, warnings, and skips are never collapsed or dropped:

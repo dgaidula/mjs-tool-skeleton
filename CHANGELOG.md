@@ -18,7 +18,7 @@ human, `--quiet`, summary or `next:` line changes.
   reason’s own code points, counted before control characters are escaped, so
   a surrogate pair is never split and the cut never falls inside an escape;
   `--json` and human keep the whole reason). The cut applies only where it
-  shortens the reason, so for ASCII 161 to 191 characters print whole; fewer
+  shortens the reason, so for printable ASCII 161 to 191 characters print whole; fewer
   for multi-byte text, since the comparison is in bytes. The fence drops
   `VERDICT_WIDTH` and `SUMMARY_WIDTH` and adds `REASON_CUT` and `briefReason`.
   Tests: a rule test runs ten samples in both modes and generated items (every

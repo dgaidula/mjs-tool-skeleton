@@ -1059,7 +1059,7 @@ test('a run line whose cwd holds a control character past ASCII runs as pasted i
   const dir = tmp();
   try {
     const copy = patchedCopy(dir, ...AUTO_RUN);
-    for (const name of ['nel\u0085dir', 'ls dir', 'bidi‮dir']) {
+    for (const name of ['nel\u0085dir', 'ls dir', 'bidi\u202edir']) {
       const work = path.join(dir, name);
       mkdirSync(work);
       const f = path.join(work, 'a.txt');
@@ -1337,7 +1337,7 @@ test('brief: a reason is cut at 160 characters and ends "… (+N chars; --json f
 test('brief: the reason cut never falls inside an escape (an ESC or a \\u escape straddling character 160)', async () => {
   const { briefLine } = await import(TOOL_URL.href);
   const head = 'warn would touch mtime  a.txt  (';
-  for (const [ctl, esc] of [['\u001b', '\\x1b'], ['‮', '\\u202e']]) {
+  for (const [ctl, esc] of [['\u001b', '\\x1b'], ['\u202e', '\\u202e']]) {
     for (let k = 155; k <= 162; k += 1) { // the control character at every offset around the limit
       const raw = [...`${'x'.repeat(k)}${ctl}[31m`, ...'y'.repeat(300)];
       const out = briefLine({ ...OK_ITEM, verdict: 'warn', reason: raw.join('') });

@@ -665,7 +665,7 @@ function nextLine(next, mode) {
 
 // -- rendering (one item shape -> every mode)
 
-const REASON_CUT = 160; // --brief shows at most this many characters of a reason
+const REASON_CUT = 160; // --brief cuts a reason after this many of its own characters (before escaping)
 
 function summaryLine(s, effect) {
   const base = `summary: ok=${s.ok} warn=${s.warn} skip=${s.skip} refuse=${s.refuse} fail=${s.fail}`;
