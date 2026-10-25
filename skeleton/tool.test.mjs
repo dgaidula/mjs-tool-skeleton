@@ -1059,7 +1059,7 @@ test('a run line whose cwd holds a control character past ASCII runs as pasted i
   const dir = tmp();
   try {
     const copy = patchedCopy(dir, ...AUTO_RUN);
-    for (const name of ['nel\u0085dir', 'ls dir', 'bidi\u202edir']) {
+    for (const name of ['nel\u0085dir', 'ls\u2028dir', 'bidi\u202edir']) {
       const work = path.join(dir, name);
       mkdirSync(work);
       const f = path.join(work, 'a.txt');
