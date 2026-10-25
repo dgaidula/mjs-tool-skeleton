@@ -1251,7 +1251,8 @@ test('brief is never longer than human, for every verdict, summary, name and rea
   const { report, nextStep } = await import(TOOL_URL.href);
   const cjk = String.fromCodePoint(0x65e5, 0x672c);
   const emoji = String.fromCodePoint(0x1f600);
-  const reasons = [1, 20, 159, 160, 161, 170, 191, 192, 193, 400, 5000].map((n) => 'r'.repeat(n))
+  // '' is the zero-margin case: a refuse item with no reason is as long as its human block.
+  const reasons = [''].concat([1, 20, 159, 160, 161, 170, 191, 192, 193, 400, 5000].map((n) => 'r'.repeat(n)))
     .concat([cjk.repeat(100), cjk.repeat(300), emoji.repeat(300), `${'x'.repeat(50)}\n`.repeat(40)]);
   for (const verdict of ['ok', 'warn', 'skip', 'refuse', 'fail']) {
     for (const summary of ['', 'in sync', 'a much longer summary than the old column was ever wide enough to hold, 38+', cjk]) {
@@ -1267,6 +1268,13 @@ test('brief is never longer than human, for every verdict, summary, name and rea
         }
       }
     }
+  }
+  // Several refuse items with no reason, beside others: the human blank line is paid back only once.
+  const refused = { ...OK_ITEM, verdict: 'refuse', reason: '' };
+  for (const items of [[refused, refused], [refused, OK_ITEM, refused, refused], [OK_ITEM, refused, { ...OK_ITEM, verdict: 'warn', reason: '' }]]) {
+    const brief = renderIn(report, { items, next: nextStep('done', 'x'), mode: 'brief' });
+    const human = renderIn(report, { items, next: nextStep('done', 'x'), mode: 'human' });
+    assert.ok(byteLength(brief) <= byteLength(human), `${items.map((it) => it.verdict).join(',')}: ${byteLength(brief)} > ${byteLength(human)}`);
   }
 });
 
@@ -1311,9 +1319,10 @@ test('brief: a reason is cut at 160 characters and ends "… (+N chars; --json f
     assert.equal([...out.slice(head.length, out.indexOf('…'))].length, 160, `k=${k}`);
   }
 
-  // The count is of the characters shown, so a control character (an escape such as \n) counts as its escape.
-  const escaped = line(`${'x'.repeat(100)}${'\n'.repeat(100)}`); // 100 + 100 * 2 shown characters
-  assert.equal(escaped, `${head}${'x'.repeat(100)}${'\\n'.repeat(30)}${suffix(140)})`);
+  // The count is of the reason's own characters, before escaping, so a control character counts
+  // as one (its escape, such as \n, is how it is shown), and N is what --json holds past the cut.
+  const escaped = line(`${'x'.repeat(100)}${'\n'.repeat(100)}`); // 200 characters, 300 shown
+  assert.equal(escaped, `${head}${'x'.repeat(100)}${'\\n'.repeat(60)}${suffix(40)})`);
   assert.ok(!hasControl(escaped));
   assert.equal(escaped.split('\n').length, 1);
 
@@ -1323,4 +1332,18 @@ test('brief: a reason is cut at 160 characters and ends "… (+N chars; --json f
   const json = JSON.parse(renderIn(report, { items, next: nextStep('done', 'x'), mode: 'json' }));
   assert.equal(json.items[0].reason, long);
   assert.ok(renderIn(report, { items, next: nextStep('done', 'x'), mode: 'human' }).includes(`warn: ${long}\n`));
+});
+
+test('brief: the reason cut never falls inside an escape (an ESC or a \\u escape straddling character 160)', async () => {
+  const { briefLine } = await import(TOOL_URL.href);
+  const head = 'warn would touch mtime  a.txt  (';
+  for (const [ctl, esc] of [['\u001b', '\\x1b'], ['‮', '\\u202e']]) {
+    for (let k = 155; k <= 162; k += 1) { // the control character at every offset around the limit
+      const raw = [...`${'x'.repeat(k)}${ctl}[31m`, ...'y'.repeat(300)];
+      const out = briefLine({ ...OK_ITEM, verdict: 'warn', reason: raw.join('') });
+      const kept = raw.slice(0, 160).join('').replace(ctl, esc); // cut whole, then escaped
+      assert.equal(out, `${head}${kept}… (+${raw.length - 160} chars; --json for all))`, `${esc} k=${k}`);
+      assert.ok(!hasControl(out), `${esc} k=${k}`);
+    }
+  }
 });

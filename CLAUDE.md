@@ -162,11 +162,15 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     160 characters and ending `… (+N chars; --json for all)`. **`--brief` is
     never longer than the human output of the same run**, and a test runs the
     samples in both modes to hold it. Two edges of that: the cut applies only
-    where it shortens the reason (the note is about 30 bytes, so 161 to 191
-    characters print whole; a literal cut there would make the line longer than
-    the human reason line), and a `refuse` item with an empty reason is a byte
-    longer than its human block (the verdict word is six letters; the human
-    blank line pays back the first one), which no shipped sample does.
+    where it shortens the reason (the note is about 30 bytes, so for ASCII 161
+    to 191 characters print whole, fewer for multi-byte text, since the
+    comparison is in bytes; a literal cut there would make the line longer than
+    the human reason line), and a `refuse` item with an empty reason is exactly
+    as long as its human block (the verdict word is six letters), so the human
+    blank line is the whole margin: the brief output is one byte shorter, for
+    any number of such items. The size test carries an empty reason for that
+    zero-margin case. The cut counts the reason’s own code points, before
+    escaping, so it never falls inside an escape, and N counts the same way.
 
 14. **`--cheat` is a *should* and lives above the fence.** The `CHEAT`
     constant, the `cheat` option and the short branch in `main()` are

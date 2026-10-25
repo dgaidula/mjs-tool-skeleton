@@ -746,15 +746,18 @@ function summaryLine(s, effect) {
 }
 
 // A reason for --brief: the whole of it, or its first REASON_CUT characters
-// and a count of the rest, which --json carries in full. Characters are code
-// points, so a surrogate pair is never split. The cut applies only where it
-// shortens the reason (a reason a few characters over the limit is shorter
-// whole than with the note), so --brief is never longer than the human output.
+// and a count of the rest, which --json carries in full. Characters are the
+// reason's own code points, counted before escaping: a surrogate pair is never
+// split, the cut never falls inside an escape (a control character is cut
+// whole, then shown as its escape), and N is the code points --json holds past
+// the cut. The cut applies only where it shortens the reason (a reason a few
+// characters over the limit is shorter whole than with the note), so --brief
+// is never longer than the human output.
 function briefReason(reason) {
   const shown = printable(reason);
-  const chars = Array.from(shown);
+  const chars = Array.from(String(reason));
   if (chars.length <= REASON_CUT) return shown;
-  const cut = `${chars.slice(0, REASON_CUT).join('')}… (+${chars.length - REASON_CUT} chars; --json for all)`;
+  const cut = `${printable(chars.slice(0, REASON_CUT).join(''))}… (+${chars.length - REASON_CUT} chars; --json for all)`;
   return Buffer.byteLength(cut) < Buffer.byteLength(shown) ? cut : shown;
 }
 

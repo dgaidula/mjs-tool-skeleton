@@ -287,7 +287,7 @@ by how worried a reader should be.
 - **In a tool that acts per item, `--go` never does to a `warn` item what it
   does to an `ok` one.** At most it holds the item aside, as the README’s rule
   3 allows. Say so in the summary itself (`not renamed: needs review (score
-  0.600)`), so a `⚠ warn` line beside `✓ ok renamed` cannot be read as
+  0.600)`), so a `warn` line beside an `ok renamed` one cannot be read as
   “renamed, with a caveat”. Where several items feed one action (patch rules
   before a single compile-and-run), a `warn` on an input qualifies that one
   action: decide whether it blocks `--go`, and say which in the docs.
@@ -326,7 +326,7 @@ by how worried a reader should be.
   (exit 3, nothing on stdout). Both are right; document both.
 
 - **A rename’s item is named `<from> -> <to>`.** A target filename with
-  spaces cannot sit readably in the summary column.
+  spaces cannot sit readably in the summary.
 
 ## 4. `next`: say what is actually wrong
 
@@ -875,14 +875,22 @@ no glyph, and a reason cut at 160 characters, so that `--brief` is never longer
 than the human output. The summary line, the `next:`
 line, the human block and every `--json` key are unchanged; only the
 `contract` value in `--json` and the fence’s version marker move, to `mjs-tool/3`
-and `runtime v3`.
+and `runtime v3`. The contract string also appears on stderr, in the message
+for a malformed hook (`contract mjs-tool/2: declare …` becomes
+`contract mjs-tool/3: declare …`), so a test that matches that text moves too.
 
 1. **Replace the fence wholesale.** Copy the block from `skeleton/tool.mjs`,
    from the opening line through the closing line, markers included, over the
    tool’s own. Nothing else in the tool’s code changes unless the fence
    removed a name the tool used: v3 drops `VERDICT_WIDTH` and `SUMMARY_WIDTH`
-   and adds `REASON_CUT` and `briefReason`. A tool that read the first two (or
-   declared its own `REASON_CUT`) fails to load, loudly, until it stops.
+   and adds `REASON_CUT` and `briefReason`. Before the swap, search the tool’s
+   own code (above the fence) for all four names, and treat a hit as a code
+   change that needs a design decision, not part of the mechanical re-sync. A
+   read of a dropped name inside a function does not fail when the tool
+   loads: the tool passes `node --check` and `--help`, and fails only when
+   that function runs, with `error: SUMMARY_WIDTH is not defined` and exit 3.
+   Only a top-level redeclaration of `REASON_CUT` or `briefReason` fails at
+   load (a `SyntaxError`, which `node --check` catches).
 
 2. **Move the fence test.** Its start and end marker constants say `v3`, the
    pinned sha256 is the new block’s, and the comment names the skeleton
@@ -890,22 +898,40 @@ and `runtime v3`.
    passes only once the checkout is on the same revision, so re-sync after the
    skeleton’s release is on that checkout.
 
+   Sequencing: each machine’s skeleton checkout moves when that machine pulls.
+   Once it is on the new release, every adopted tool not yet re-synced whose
+   test compares with the live checkout goes red on that machine. That one red
+   test is expected; never “fix” it by editing the test. Re-sync each tool
+   promptly after the release instead. To check a re-sync before the release,
+   point the tool’s test at the release branch: with the tool’s skeleton-path
+   override where it has one (`MJS_TOOL_SKELETON=<checkout>`), otherwise with
+   `HOME` set to a scratch directory in which the path the test reads under
+   `HOME` (such as `sw/github-public/mjs-tool-skeleton`) is the branch
+   checkout.
+
 3. **Update the tests that pin brief lines.** Search the tool’s tests for
    brief item lines written out in full, for the glyphs (`✓ ⚠ • ⊘ ✗`), for
    padded columns (a regex such as `/ ok /`, which now needs `/^ok /`), and for
-   `"contract": "mjs-tool/2"`. A test that rebuilds the expectation from
-   `--json` needs only the new shape.
+   `mjs-tool/2` in any form: tests carry it as `"contract": "mjs-tool/2"`, as
+   `'mjs-tool/2'`, and in the hook-error text `contract mjs-tool/2: declare`.
+   A test that rebuilds the expectation from `--json` needs only the new shape.
 
-4. **Update the callers that parse brief output** (§1 again). A script that
+4. **Update the tool’s own docs.** Copy the skeleton’s new `--brief` wording
+   from its header into the tool’s header (which is its `--help`), paste the
+   current `AGENT-USAGE.md` block over the old one in the tool’s agent doc,
+   and change every `mjs-tool/2` in the tool’s README and docs to
+   `mjs-tool/3`.
+
+5. **Update the callers that parse brief output** (§1 again). A script that
    cut a brief line by column, or tested for a glyph, reads `--json` instead; a
    script that grepped for the verdict word as a whole word (`grep -w refuse`)
    keeps working.
 
-5. **Add the size test** if the tool has samples of its own: run each in both
+6. **Add the size test** if the tool has samples of its own: run each in both
    modes and assert the brief output is no longer than the human output. The
    skeleton’s suite has the shape.
 
-6. **Done** when the tool’s suite is green, its `--brief` run on a real input
+7. **Done** when the tool’s suite is green, its `--brief` run on a real input
    reads as `<verdict> <summary>  <name>`, and a scan of the fleet shows the
    tool on `mjs-tool/3` with its fence unedited.
 

@@ -61,8 +61,8 @@ to stdout, exits `0`, and prints nothing else. Combined with `--brief`,
 `--json` or `--quiet` it is a usage error (exit `2`, nothing on stdout), not a
 silent choice between them. `--help` and `--version` come first: beside
 either, `--cheat` is ignored and that flag’s output is printed, mode flags or
-not. It is a *should*: a tool without it is still
-`mjs-tool/3`, and the contract string and the runtime fence do not change.
+not. It is a *should*: a tool without it is still conformant, and adding it
+changes neither the contract string nor the runtime fence.
 
 ```
 # tool
@@ -99,9 +99,12 @@ padding and no glyph — plus a parenthesised reason **whenever the verdict is
 not `ok`**. `--brief` is for an agent’s context: it is never longer than the
 default human output for the same run, and usually much shorter. A reason
 longer than 160 characters is cut at 160 and ends `… (+N chars; --json for
-all)`, where N is the number of characters cut. (The cut applies only where it
-shortens the reason: the note is about 30 bytes, so a reason of 161 to 191
-characters prints whole, and `--brief` still never grows past human.)
+all)`, where N is the number of characters cut, counted in the reason itself
+(code points, before a control character is shown as its escape, so the cut
+never falls inside an escape). (The cut applies only where it shortens the
+reason: the note is about 30 bytes, so for ASCII a reason of 161 to 191
+characters prints whole; fewer for multi-byte text, since the comparison is in
+bytes. `--brief` still never grows past human.)
 Refusals, warnings, and skips are never collapsed or dropped:
 
 `apply report.txt notes.txt assets gone.txt --brief` (a dry run):
@@ -364,7 +367,7 @@ scaffolded tool. It locks the contract:
 - `--brief` emits one line per item, as `<verdict> <summary>  <name>` with no
   padding and no glyph, and keeps a refusal line, with its reason; the line
   is rebuilt from the `--json` items; a reason is cut at 160 characters (the
-  edges, multi-byte characters, a surrogate pair at the cut), while `--json`
+  edges, multi-byte characters, a surrogate pair or an escape at the cut), while `--json`
   and human keep it whole; and `--brief` is never longer than the human output,
   for every sample and for generated items.
 

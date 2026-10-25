@@ -14,17 +14,20 @@ human, `--quiet`, summary or `next:` line changes.
   verdict to 6 characters and the summary to 38, and added a glyph. The item
   line is now `<verdict> <summary>  <name>`, with no padding and no glyph, and
   a non-`ok` reason still follows in parentheses, cut at 160 characters and
-  ending `… (+N chars; --json for all)`, N being the characters cut (code
-  points, so a surrogate pair is never split; `--json` and human keep the
-  whole reason). The cut applies only where it shortens the reason, so 161 to
-  191 characters print whole. The fence drops `VERDICT_WIDTH` and
-  `SUMMARY_WIDTH` and adds `REASON_CUT` and `briefReason`. Tests: a rule test
-  runs ten samples in both modes and generated items (every verdict, four
-  summaries, three names, fifteen reasons, one to three items) and asserts
-  `bytes(brief) <= bytes(human)`; the cut is pinned at 159, 160, 161, 191, 192
-  and 400+ characters, with CJK text and an emoji at the cut; the 0.1.0 golden
-  test keeps the human and summary lines and takes the new brief lines.
-  Skeleton suite 50 → 54, scaffolder suite 11. Docs: README (the `--brief` line
+  ending `… (+N chars; --json for all)`, N being the characters cut (the
+  reason’s own code points, counted before control characters are escaped, so
+  a surrogate pair is never split and the cut never falls inside an escape;
+  `--json` and human keep the whole reason). The cut applies only where it
+  shortens the reason, so for ASCII 161 to 191 characters print whole; fewer
+  for multi-byte text, since the comparison is in bytes. The fence drops
+  `VERDICT_WIDTH` and `SUMMARY_WIDTH` and adds `REASON_CUT` and `briefReason`.
+  Tests: a rule test runs ten samples in both modes and generated items (every
+  verdict, four summaries, three names, sixteen reasons including an empty
+  one, one to three items, and mixed lists of reasonless `refuse` items) and
+  asserts `bytes(brief) <= bytes(human)`; the cut is pinned at 159, 160, 161,
+  191, 192 and 400+ characters, with CJK text, an emoji, an ESC and a bidi
+  control at the cut; the 0.1.0 golden test keeps the human and summary lines
+  and takes the new brief lines. Skeleton suite 50 → 55, scaffolder suite 11. Docs: README (the `--brief` line
   and its sample, the contract strings), AGENT-USAGE (the cut form is the
   quote), ADOPTING §10 (re-syncing a tool), CLAUDE.md invariants 12 and 13.
 
