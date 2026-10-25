@@ -17,14 +17,14 @@ a person and by an agent from **one set of item objects**. Two moving parts:
   template, substituting the name.
 
 Both end in the same **runtime fence**: the block between
-`// ---- mjs-tool runtime v2 (do not edit; replace wholesale) ----` and
-`// ---- end mjs-tool runtime v2 ----`, which holds everything shared (the
+`// ---- mjs-tool runtime v3 (do not edit; replace wholesale) ----` and
+`// ---- end mjs-tool runtime v3 ----`, which holds everything shared (the
 renderer, the `next` guard and default policy, the exit paths, `--help`,
 `--version`, the entry guard). The tool-specific code sits above it.
 
 Zero dependencies, Node 20+ ESM, no Python. The convention it encodes is real
 and predates this repo (a private pipeline repo of Dan’s); this is the extracted
-public shape, not a copy of that code. The current contract is `mjs-tool/2`.
+public shape, not a copy of that code. The current contract is `mjs-tool/3`.
 
 ## The load-bearing invariants — do not regress
 
@@ -149,13 +149,24 @@ public shape, not a copy of that code. The current contract is `mjs-tool/2`.
     guard is its last statement, so every top-level binding is initialised
     before `main()` runs), carries its own namespaced imports, holds no
     tool-specific code and no `<tool>` placeholder. A contract change bumps
-    the marker version and `CONTRACT` together (`v3`, `mjs-tool/3`).
+    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version).
 
-13. **Text output is frozen to 0.1.0.** The brief item and summary lines, and
-    the human blocks, are byte-identical to what 0.1.0 printed, padding and
-    the `(dry run: pass --go to apply)` suffix included; the only v2 addition
-    is the final `next:` line, whose form differs by mode (invariant 10). The
-    golden test locks it — change it only on Dan’s say-so.
+13. **Text output is frozen, except the `--brief` item line, which has one rule.**
+    The summary line and the human blocks are byte-identical to what 0.1.0
+    printed, the `(dry run: pass --go to apply)` suffix included; the only v2
+    addition is the final `next:` line, whose form differs by mode (invariant
+    10). The golden test locks them — change them only on Dan’s say-so. The
+    brief item line is `<verdict> <summary>  <name>`, with no padding and no
+    glyph (v3, 0.4.0; Dan’s decision of 2026-10-24: `--brief` is to cut output
+    noise and token use), and a non-`ok` reason follows in parentheses, cut at
+    160 characters and ending `… (+N chars; --json for all)`. **`--brief` is
+    never longer than the human output of the same run**, and a test runs the
+    samples in both modes to hold it. Two edges of that: the cut applies only
+    where it shortens the reason (the note is about 30 bytes, so 161 to 191
+    characters print whole; a literal cut there would make the line longer than
+    the human reason line), and a `refuse` item with an empty reason is a byte
+    longer than its human block (the verdict word is six letters; the human
+    blank line pays back the first one), which no shipped sample does.
 
 14. **`--cheat` is a *should* and lives above the fence.** The `CHEAT`
     constant, the `cheat` option and the short branch in `main()` are
@@ -228,7 +239,7 @@ also how the suite proves `next.argv` runs without one. Auto-run is tested
 the same way (the `AUTO_RUN` anchor turns the default `ask` into `run`),
 and the load-time hook check from `withRuntime()`, a file of bare hook
 declarations followed by the tool’s own fence. The 0.1.0 golden lines
-live inline in `test/new-tool.test.mjs`.
+(human and summary) and the v3 brief lines live inline in `test/new-tool.test.mjs`.
 
 The y/N prompt is tested with injected streams; the real TTY path is a manual
 check (a pty test proved timing-sensitive under `script`). From a temp dir

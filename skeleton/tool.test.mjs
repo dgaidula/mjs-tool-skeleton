@@ -33,9 +33,9 @@ test('brief: one line per item, refusal kept, reason parenthesised for non-ok', 
     const r = run(['inspect', f, missing, '--brief']);
     const lines = r.stdout.trim().split('\n');
     assert.equal(lines.length, 4); // two items + one summary line + one next: line
-    assert.match(lines[0], / ok /);
+    assert.match(lines[0], /^ok /);
     assert.doesNotMatch(lines[0], /\(/); // an ok item carries no parenthesised reason
-    assert.match(lines[1], / refuse /); // the refusal is never dropped or merged
+    assert.match(lines[1], /^refuse /); // the refusal is never dropped or merged
     assert.match(lines[1], /\(path does not exist\)/);
     assert.match(lines[2], /^summary: ok=1 warn=0 skip=0 refuse=1 fail=0/);
     assert.match(lines[3], /^next: done /);
@@ -97,7 +97,7 @@ test('apply: a directory is skipped, not collapsed away', () => {
     const sub = path.join(dir, 'adir');
     mkdirSync(sub);
     const r = run(['apply', sub, '--brief']);
-    assert.match(r.stdout, / skip /);
+    assert.match(r.stdout, /^skip /);
     assert.match(r.stdout, /^summary: ok=0 warn=0 skip=1/m);
     assert.equal(r.status, 0); // a skip is not a failure
   } finally {
@@ -141,7 +141,7 @@ test('non-TTY: a step that would prompt refuses (exit 1) rather than hanging', (
     writeFileSync(f, 'x');
     const r = run(['apply', f, '--go', '--brief'], { timeout: 10000 });
     assert.equal(r.status, 1);
-    assert.match(r.stdout, / refuse /);
+    assert.match(r.stdout, /^refuse /);
     assert.match(r.stdout, /not a TTY/);
     assert.equal(Math.round(statSync(f).size), 1); // nothing mutated
 
@@ -265,7 +265,7 @@ test('symlinked invocation still runs main() (realpath entry guard)', () => {
     symlinkSync(TOOL_PATH, link); // an npm-linked bin is exactly this: a symlink
     const r = spawnSync('node', [link, 'inspect', f, '--brief'], { encoding: 'utf8', timeout: 15000 });
     assert.equal(r.status, 0);
-    assert.match(r.stdout, / ok /); // a naive guard would print nothing here
+    assert.match(r.stdout, /^ok /); // a naive guard would print nothing here
     assert.match(r.stdout, /summary:/);
     // next re-runs the link as invoked, not the file it resolves to.
     const { next } = JSON.parse(spawnSync(NODE, [link, 'apply', f, '--json'], { encoding: 'utf8', timeout: 15000 }).stdout);
@@ -275,7 +275,7 @@ test('symlinked invocation still runs main() (realpath entry guard)', () => {
   }
 });
 
-// ---- contract mjs-tool/2: effect, exit, and the next-action layer ------------
+// ---- contract mjs-tool/3: effect, exit, and the next-action layer ------------
 
 // A copy of the tool with one line of its fenced runtime patched, for faults
 // only a changed program can produce. The fence is byte-identical in every
@@ -319,7 +319,7 @@ function hasControl(s) {
   });
 }
 
-test('json: contract mjs-tool/2 keys, and the effect of each command', () => {
+test('json: contract mjs-tool/3 keys, and the effect of each command', () => {
   const dir = tmp();
   try {
     const f = path.join(dir, 'a.txt');
@@ -332,7 +332,7 @@ test('json: contract mjs-tool/2 keys, and the effect of each command', () => {
     ]) {
       const r = run([...args, '--json']);
       const data = JSON.parse(r.stdout);
-      assert.equal(data.contract, 'mjs-tool/2');
+      assert.equal(data.contract, 'mjs-tool/3');
       assert.equal(data.effect, effect, args.join(' '));
       assert.equal(data.exit, r.status); // the echoed code is the real one
       for (const key of ['tool', 'version', 'command', 'items', 'summary', 'next']) assert.ok(key in data, key);
@@ -703,7 +703,7 @@ test('control characters in a filename: the report renders under --go, one next:
     assert.ok(statSync(plain).mtimeMs > 1e12); // a.txt was touched, and the report says so
     const lines = r.stdout.trimEnd().split('\n');
     assert.equal(lines.length, 4); // two items, summary, next: each item is one line
-    assert.match(lines[1], /^⊘ refuse refused \(unconfirmed\) +protected\\nx\.txt {2}\(needs confirmation/);
+    assert.match(lines[1], /^refuse refused \(unconfirmed\) {2}protected\\nx\.txt {2}\(needs confirmation/);
     assert.equal(lines[3], 'next: ask  (left unconfirmed without a TTY; a person must confirm at a terminal: protected\\nx.txt)');
     const human = run(['apply', nl, '--go'], { cwd: dir }).stdout.trimEnd().split('\n');
     assert.match(human.at(-1), /^next: your call: .* \$'protected\\nx\.txt' --go {2}\(left unconfirmed without a TTY; .*: protected\\nx\.txt\)$/);
@@ -741,6 +741,7 @@ test('control characters, each class: the policy passes its guard, next: stays o
       assert.ok(!hasControl(tool.nextLine(next)), label);
       assert.ok(!hasControl(tool.nextLine(next, 'human')), label);
       assert.ok(!hasControl(tool.briefLine(r.items[0])), label);
+      assert.ok(!hasControl(tool.briefLine({ ...r.items[0], summary: `sum${c}mary`, reason: `rea${c}son` })), label);
     }
     assert.ok(!hasControl(tool.nextLine(tool.nextStep('run', 'x', { argv: ['t', name] }))), label);
     // nextStep escapes why itself, so a policy's why passes the guard; a raw one built by hand does not.
@@ -1015,7 +1016,7 @@ test('the runtime names a missing or misshapen hook as the module loads (exit 3,
       const r = spawnSync(NODE, [file], { encoding: 'utf8', timeout: 15000 });
       assert.equal(r.status, 3, `${hook}: ${r.stderr}`);
       assert.equal(r.stdout, '', hook);
-      assert.match(r.stderr, new RegExp(`^error: contract mjs-tool/2: declare ${hook} as `, 'm'), hook);
+      assert.match(r.stderr, new RegExp(`^error: contract mjs-tool/3: declare ${hook} as `, 'm'), hook);
       await assert.rejects(import(pathToFileURL(file).href), new RegExp(`declare ${hook} as `), hook); // imported, it throws
     }
   } finally {
@@ -1159,4 +1160,167 @@ test('end to end: a policy that chains into another command\'s --go exits 3; a d
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- --brief is for an agent's context (mjs-tool/3) -------------------------
+
+const byteLength = (s) => Buffer.byteLength(s);
+
+// report() in-process, with stdout captured.
+function renderIn(report, args) {
+  const write = process.stdout.write;
+  let out = '';
+  process.stdout.write = (chunk) => { out += chunk; return true; };
+  try { report({ command: 'inspect', effect: 'read-only', ...args }); } finally { process.stdout.write = write; }
+  return out;
+}
+
+// A directory of the files every sample below is run over: ok, warn (empty),
+// skip (a directory), refuse (missing, protected), and names that are long,
+// multibyte or carry control characters.
+function sampleDir() {
+  const dir = tmp();
+  for (const f of ['report.txt', 'notes.txt', 'a.txt', 'b.txt', 'protected.txt']) writeFileSync(path.join(dir, f), 'hello');
+  writeFileSync(path.join(dir, 'empty.txt'), '');
+  writeFileSync(path.join(dir, 'tab\there.txt'), 'x');
+  writeFileSync(path.join(dir, 'nl\nname.txt'), 'x');
+  writeFileSync(path.join(dir, `${String.fromCodePoint(0x65e5, 0x672c, 0x8a9e)}-${String.fromCodePoint(0x1f600)}.txt`), 'x');
+  mkdirSync(path.join(dir, 'assets'));
+  return dir;
+}
+
+test('brief: <verdict> <summary>  <name> with no padding and no glyph, rebuilt from the --json items', () => {
+  const dir = sampleDir();
+  try {
+    for (const [args, verdicts] of [
+      [['inspect', 'a.txt', 'empty.txt', 'gone.txt', 'tab\there.txt'], ['ok', 'warn', 'refuse', 'ok']],
+      [['apply', 'a.txt', 'assets', 'gone.txt'], ['ok', 'skip', 'refuse']],
+    ]) {
+      const brief = run([...args, '--brief'], { cwd: dir }).stdout.trimEnd().split('\n');
+      const { items } = JSON.parse(run([...args, '--json'], { cwd: dir }).stdout);
+      assert.deepEqual(items.map((it) => it.verdict), verdicts);
+      const expected = items.map((it) => `${it.verdict} ${it.summary}  ${it.name}`
+        + (it.verdict !== 'ok' && it.reason ? `  (${it.reason})` : ''));
+      assert.deepEqual(brief.slice(0, items.length), expected);
+      for (const line of brief.slice(0, items.length)) assert.doesNotMatch(line, /[✓⚠•⊘✗]/, line); // no glyph
+      // The summary and next: lines are the same bytes as --quiet prints, and the summary the same as human's.
+      const quiet = run([...args, '--quiet'], { cwd: dir }).stdout.trimEnd().split('\n');
+      assert.deepEqual(brief.slice(items.length), quiet);
+      const human = run(args, { cwd: dir }).stdout.trimEnd().split('\n');
+      assert.equal(human.at(-2), quiet[0]);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('brief is never longer than the human output of the same run, for every sample', () => {
+  const dir = sampleDir();
+  try {
+    const samples = [
+      ['apply', 'report.txt', 'notes.txt', 'assets', 'gone.txt'], // the README sample
+      ['apply', 'report.txt', 'notes.txt', 'assets', 'gone.txt', '--go'],
+      ['inspect', 'a.txt', 'empty.txt', 'assets', 'gone.txt'],
+      ['inspect', 'a.txt', 'b.txt'],
+      ['inspect', 'a.txt'], // one short ok item: the shape the padding made longer
+      ['inspect', 'gone.txt'],
+      ['apply', 'protected.txt', '--go'], // refused: no TTY
+      ['apply', 'protected.txt'],
+      ['apply', 'tab\there.txt', 'nl\nname.txt'],
+      ['inspect', `${String.fromCodePoint(0x65e5, 0x672c, 0x8a9e)}-${String.fromCodePoint(0x1f600)}.txt`, 'nl\nname.txt'],
+    ];
+    for (const args of samples) {
+      const fresh = sampleDir(); // --go touches files: each mode gets its own copy
+      const fresh2 = sampleDir();
+      try {
+        const brief = run([...args, '--brief'], { cwd: fresh }).stdout;
+        const human = run(args, { cwd: fresh2 }).stdout;
+        assert.ok(brief.length > 0 && human.length > 0, args.join(' '));
+        assert.ok(byteLength(brief) <= byteLength(human), `${args.join(' ')}: brief ${byteLength(brief)} B > human ${byteLength(human)} B`);
+      } finally {
+        rmSync(fresh, { recursive: true, force: true });
+        rmSync(fresh2, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('brief is never longer than human, for every verdict, summary, name and reason length (report() in-process)', async () => {
+  const { report, nextStep } = await import(TOOL_URL.href);
+  const cjk = String.fromCodePoint(0x65e5, 0x672c);
+  const emoji = String.fromCodePoint(0x1f600);
+  const reasons = [1, 20, 159, 160, 161, 170, 191, 192, 193, 400, 5000].map((n) => 'r'.repeat(n))
+    .concat([cjk.repeat(100), cjk.repeat(300), emoji.repeat(300), `${'x'.repeat(50)}\n`.repeat(40)]);
+  for (const verdict of ['ok', 'warn', 'skip', 'refuse', 'fail']) {
+    for (const summary of ['', 'in sync', 'a much longer summary than the old column was ever wide enough to hold, 38+', cjk]) {
+      for (const name of ['a', 'a.txt', `${cjk}-${emoji}`]) {
+        for (const reason of reasons) {
+          for (const count of [1, 2, 3]) {
+            const item = { ...OK_ITEM, verdict, summary, name, path: name, reason };
+            const items = Array.from({ length: count }, () => item);
+            const brief = renderIn(report, { items, next: nextStep('done', 'x'), mode: 'brief' });
+            const human = renderIn(report, { items, next: nextStep('done', 'x'), mode: 'human' });
+            assert.ok(byteLength(brief) <= byteLength(human), `${verdict} summary=${summary.length} name=${name.length} reason=${[...reason].length} x${count}: ${byteLength(brief)} > ${byteLength(human)}`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('brief: a reason is cut at 160 characters and ends "… (+N chars; --json for all)"; --json and human keep all of it', async () => {
+  const { briefLine, report, nextStep } = await import(TOOL_URL.href);
+  const line = (reason, verdict = 'warn') => briefLine({ ...OK_ITEM, verdict, reason });
+  const head = 'warn would touch mtime  a.txt  (';
+  const suffix = (n) => `… (+${n} chars; --json for all)`;
+  // Up to 160 characters a reason is printed whole, and a non-ok verdict always has one.
+  for (const n of [1, 159, 160]) assert.equal(line('r'.repeat(n)), `${head}${'r'.repeat(n)})`, `n=${n}`);
+  assert.equal(briefLine({ ...OK_ITEM, reason: 'r'.repeat(400) }), 'ok would touch mtime  a.txt'); // ok: no reason at all
+  // Past 160 the cut applies where it shortens the reason. The note is about 30 bytes, so a
+  // reason a few characters over 160 is shorter whole than cut: the first cut is at 192.
+  const firstCut = [...Array(300).keys()].map((i) => i + 161).find((n) => line('r'.repeat(n)).includes(suffix(n - 160)));
+  assert.equal(firstCut, 192);
+  for (let n = 161; n < firstCut; n += 1) assert.equal(line('r'.repeat(n)), `${head}${'r'.repeat(n)})`, `n=${n}`); // 161 stays whole
+  for (let n = firstCut; n <= 460; n += 1) {
+    assert.equal(line('r'.repeat(n)), `${head}${'r'.repeat(160)}${suffix(n - 160)})`, `n=${n}`);
+  }
+  assert.equal(line('r'.repeat(5000)).endsWith(`${'r'.repeat(160)}${suffix(4840)})`), true);
+
+  // Characters, not bytes: 400 CJK characters (1200 bytes) cut to 160 characters (480 bytes).
+  const cjk = String.fromCodePoint(0x65e5);
+  assert.equal(line(cjk.repeat(160)), `${head}${cjk.repeat(160)})`); // 160 characters whole, 480 bytes
+  assert.equal(line(cjk.repeat(400)), `${head}${cjk.repeat(160)}${suffix(240)})`);
+
+  // A surrogate pair is never split: the 160th character is an emoji (two UTF-16 units).
+  const emoji = String.fromCodePoint(0x1f600);
+  const straddle = line(`${'a'.repeat(159)}${emoji}${'b'.repeat(300)}`);
+  assert.equal(straddle, `${head}${'a'.repeat(159)}${emoji}${suffix(300)})`);
+  const lone = (s) => { // a high surrogate not followed by a low one, or a low one not preceded by a high one
+    for (let i = 0; i < s.length; i += 1) {
+      const c = s.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) { const d = s.charCodeAt(i + 1); if (!(d >= 0xdc00 && d <= 0xdfff)) return true; i += 1; } else if (c >= 0xdc00 && c <= 0xdfff) return true;
+    }
+    return false;
+  };
+  for (let k = 150; k <= 170; k += 1) { // the cut falls on a pair at every offset around the limit
+    const out = line(`${'a'.repeat(k)}${emoji.repeat(120)}`);
+    assert.equal(lone(out), false, `k=${k}`);
+    assert.ok(out.includes(suffix(k + 120 - 160)), `k=${k}`);
+    assert.equal([...out.slice(head.length, out.indexOf('…'))].length, 160, `k=${k}`);
+  }
+
+  // The count is of the characters shown, so a control character (an escape such as \n) counts as its escape.
+  const escaped = line(`${'x'.repeat(100)}${'\n'.repeat(100)}`); // 100 + 100 * 2 shown characters
+  assert.equal(escaped, `${head}${'x'.repeat(100)}${'\\n'.repeat(30)}${suffix(140)})`);
+  assert.ok(!hasControl(escaped));
+  assert.equal(escaped.split('\n').length, 1);
+
+  // --json carries the whole reason; human prints it whole too.
+  const long = 'z'.repeat(400);
+  const items = [{ ...OK_ITEM, verdict: 'warn', reason: long }];
+  const json = JSON.parse(renderIn(report, { items, next: nextStep('done', 'x'), mode: 'json' }));
+  assert.equal(json.items[0].reason, long);
+  assert.ok(renderIn(report, { items, next: nextStep('done', 'x'), mode: 'human' }).includes(`warn: ${long}\n`));
 });

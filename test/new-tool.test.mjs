@@ -62,7 +62,7 @@ test('name is substituted throughout; no <tool> placeholder survives', () => {
     // CLAUDE.md carries the agent-usage block, and names the contract of the fence it got
     const claude = readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
     assert.match(claude, /Driving `my-widget`/);
-    assert.match(claude, /runtime v2: the shared\s+machinery of\s+contract `mjs-tool\/2`/);
+    assert.match(claude, /runtime v3: the shared\s+machinery of\s+contract `mjs-tool\/3`/);
     assert.match(claude, /EXTRA_OVERRIDE_FLAGS/);
     assert.match(claude, /GO_ALIASES/);
     assert.match(claude, /await, or synchronously flush, every\s+file write/); // the runtime exits once stdout flushes
@@ -103,7 +103,7 @@ test('refuses to overwrite an existing directory (exit 1)', () => {
     assert.equal(data.summary.refuse, 1);
     assert.equal(data.items[0].verdict, 'refuse');
     assert.match(data.items[0].reason, /already exists/);
-    assert.equal(data.contract, 'mjs-tool/2');
+    assert.equal(data.contract, 'mjs-tool/3');
     assert.equal(data.effect, 'applied'); // no dry run: see the scaffolder's header
     assert.equal(data.exit, 1);
     assert.equal(data.next.action, 'done');
@@ -132,10 +132,10 @@ test('usage errors exit 2', () => {
   }
 });
 
-// ---- contract mjs-tool/2: one runtime, frozen text output -------------------
+// ---- contract mjs-tool/3: one runtime, brief by the v3 rule, human frozen -------------------
 
-const OPEN = '// ---- mjs-tool runtime v2 (do not edit; replace wholesale) ----';
-const CLOSE = '// ---- end mjs-tool runtime v2 ----';
+const OPEN = '// ---- mjs-tool runtime v3 (do not edit; replace wholesale) ----';
+const CLOSE = '// ---- end mjs-tool runtime v3 ----';
 
 // The fenced runtime block of a file, markers included; exactly one per file.
 function fenceOf(file) {
@@ -153,15 +153,17 @@ test('the runtime fence is byte-identical in the skeleton and the scaffolder', (
   }
 });
 
-test('brief and human item and summary lines are byte-identical to 0.1.0 (README sample)', () => {
+test('human lines are byte-identical to 0.1.0; brief lines follow the v3 rule; summary lines are byte-identical in both (README sample)', () => {
   // Golden output captured from 0.1.0 (git show 69851df:skeleton/tool.mjs, run
-  // in a temp dir over these files). v2 may only add the final next: line.
+  // in a temp dir over these files). v2 added the final next: line. v3 changed
+  // only the brief item lines (no padding, no glyph); the summary line and the
+  // whole human block are still 0.1.0's.
   const golden = {
     brief: [
-      '✓ ok     would touch mtime                      report.txt',
-      '✓ ok     would touch mtime                      notes.txt',
-      '• skip   is a directory                         assets  (apply targets files, not directories)',
-      '⊘ refuse no such path                           gone.txt  (path does not exist)',
+      'ok would touch mtime  report.txt',
+      'ok would touch mtime  notes.txt',
+      'skip is a directory  assets  (apply targets files, not directories)',
+      'refuse no such path  gone.txt  (path does not exist)',
       'summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)',
     ],
     human: [

@@ -1,7 +1,7 @@
 # Agent usage
 
 Paste the block below into a tool’s `CLAUDE.md` so an agent session drives the
-tool correctly. It is written against the skeleton’s contract (`mjs-tool/2`),
+tool correctly. It is written against the skeleton’s contract (`mjs-tool/3`),
 so it applies verbatim to any tool built from `mjs-tool-skeleton` (`<tool>` is
 the command name). `new-tool` already drops it into every scaffolded tool’s
 `CLAUDE.md`.
@@ -10,7 +10,7 @@ the command name). `new-tool` already drops it into every scaffolded tool’s
 
 ## Driving `<tool>` from an agent session
 
-- **Reach for `--brief` first** — or `--json` when you need to parse the result — never the default human output. Brief is exactly one line per item, then a summary line and a `next:` line; JSON is a stable `{ tool, version, contract, command, effect, exit, items, summary, next }` object. The human output is for a person at a terminal and only wastes your context.
+- **Reach for `--brief` first** — or `--json` when you need to parse the result — never the default human output. Brief is exactly one line per item (`<verdict> <summary>  <name>`, with a long reason cut at 160 characters; it is never longer than the human output), then a summary line and a `next:` line; JSON is a stable `{ tool, version, contract, command, effect, exit, items, summary, next }` object. The human output is for a person at a terminal and only wastes your context.
 
 - **Any line whose verdict is not `ok` is a finding**, not noise. The verdicts are `ok`, `warn`, `skip`, `refuse`, `fail`; a non-`ok` line is never collapsed or dropped, and carries a parenthesised reason. A run is clean only when the summary reads `warn=0 refuse=0 fail=0` — `skip` is not a failure, but report what was skipped and why.
 
@@ -20,7 +20,7 @@ the command name). `new-tool` already drops it into every scaffolded tool’s
 
 - **`<tool> --cheat`** prints a short card of the tool’s common invocations (a tldr page: a purpose line, then a handful of example commands). Read it when you need the usual command lines and not the full `--help`; it is not an output mode, and `--brief`, `--json` and `--quiet` are a usage error beside it.
 
-- **Quote back** the final summary line plus every non-`ok` line verbatim. That is the whole result — do not paraphrase a refusal into “done”.
+- **Quote back** the final summary line plus every non-`ok` line as `--brief` printed it. That is the whole result — do not paraphrase a refusal into “done”. A reason that ends `… (+N chars; --json for all)` was cut at 160 characters: the cut form is the quote, and `--json` has the full reason when you need it.
 
 ### The babysit loop: run, read `next`, obey or halt
 

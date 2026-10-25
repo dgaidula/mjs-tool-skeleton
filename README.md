@@ -62,7 +62,7 @@ to stdout, exits `0`, and prints nothing else. Combined with `--brief`,
 silent choice between them. `--help` and `--version` come first: beside
 either, `--cheat` is ignored and that flag’s output is printed, mode flags or
 not. It is a *should*: a tool without it is still
-`mjs-tool/2`, and the contract string and the runtime fence do not change.
+`mjs-tool/3`, and the contract string and the runtime fence do not change.
 
 ```
 # tool
@@ -93,24 +93,36 @@ constant beside the `--help` header; [`ADOPTING.md`](ADOPTING.md) §8 is the
 checklist for adding it to an existing tool, and `tldr --render card.md` shows
 how it will look.
 
-The **`--brief` line** is a verdict glyph, a fixed-width verdict word, a
-summary, and the item name — plus a parenthesised reason **whenever the verdict
-is not `ok`**. Refusals, warnings, and skips are never collapsed or dropped:
+The **`--brief` line** is the verdict word, the summary, and the item name,
+as `<verdict> <summary>  <name>` (two spaces before the name), with no column
+padding and no glyph — plus a parenthesised reason **whenever the verdict is
+not `ok`**. `--brief` is for an agent’s context: it is never longer than the
+default human output for the same run, and usually much shorter. A reason
+longer than 160 characters is cut at 160 and ends `… (+N chars; --json for
+all)`, where N is the number of characters cut. (The cut applies only where it
+shortens the reason: the note is about 30 bytes, so a reason of 161 to 191
+characters prints whole, and `--brief` still never grows past human.)
+Refusals, warnings, and skips are never collapsed or dropped:
 
 `apply report.txt notes.txt assets gone.txt --brief` (a dry run):
 
 ```
-✓ ok     would touch mtime                      report.txt
-✓ ok     would touch mtime                      notes.txt
-• skip   is a directory                         assets  (apply targets files, not directories)
-⊘ refuse no such path                           gone.txt  (path does not exist)
+ok would touch mtime  report.txt
+ok would touch mtime  notes.txt
+skip is a directory  assets  (apply targets files, not directories)
+refuse no such path  gone.txt  (path does not exist)
 summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
 next: ask  (dry run: review the 1 finding before --go)
 ```
 
-The item and summary lines are frozen: byte for byte what 0.1.0 printed,
-padding included, because the aligned columns are there for a person to scan.
-The one exception is a control character in a name, summary, or reason (a
+The summary line, the `next:` line and the whole human block are frozen: the
+summary and human lines are byte for byte what 0.1.0 printed (v2 added the
+final `next:` line). The `--brief` item lines changed once, in `mjs-tool/3`
+(skeleton 0.4.0): they used to be padded into columns, with a glyph, for a
+person to scan, and that made `--brief` longer than the human output on 10 of 30
+audited runs. A brief line is not a column format: the name is the last field
+and a summary can hold spaces, so a caller that needs the fields reads
+`--json`. The one exception is a control character in a name, summary, or reason (a
 newline, a carriage return, an escape sequence, a bidi override): text modes
 show it as an escape (`\n`, `\x1b`, `\u202e`), so every item stays one line,
 reads in its true order, and nothing in it can pose as a `next:` line. A TAB
@@ -125,7 +137,7 @@ The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
 {
   "tool": "tool",
   "version": "0.2.0",
-  "contract": "mjs-tool/2",
+  "contract": "mjs-tool/3",
   "command": "apply",
   "effect": "dry-run",
   "exit": 0,
@@ -153,7 +165,7 @@ The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
 | key | meaning |
 |---|---|
 | `tool`, `version` | the tool’s name and its own version (from `package.json`) |
-| `contract` | `"mjs-tool/2"`: which rules the tool follows, distinct from its version |
+| `contract` | `"mjs-tool/3"`: which rules the tool follows, distinct from its version |
 | `command` | the command that ran: one word, or a space-joined phrase for a subcommand (`staging prune`), the same string `MUTATING_COMMANDS` and `AUTO_RUN_COMMANDS` are keyed by |
 | `effect` | `"read-only"`, `"dry-run"`, or `"applied"`: what the run was allowed to do (the items’ `changed` says what actually changed) |
 | `exit` | the exit code this run returns, echoed for a caller that kept only stdout |
@@ -285,8 +297,8 @@ deliberately; `next` never suggests it.)
 **The runtime fence.** Everything above that is not tool-specific — the
 renderer, the `next` guard, the exit codes, `--help`, `--version`, the entry
 guard — lives in one block at the bottom of the tool, between
-`// ---- mjs-tool runtime v2 (do not edit; replace wholesale) ----` and
-`// ---- end mjs-tool runtime v2 ----`. The block is byte-identical in every
+`// ---- mjs-tool runtime v3 (do not edit; replace wholesale) ----` and
+`// ---- end mjs-tool runtime v3 ----`. The block is byte-identical in every
 tool on the contract and carries its own imports, so the next contract change
 is a mechanical swap of that block rather than a hand edit of every tool, and
 a scanner can read a tool’s contract from its fence. As it loads, the block
@@ -349,7 +361,12 @@ Then parse with Commander instead and keep the contract: ADOPTING.md §9.
 dependencies, temp dirs cleaned up in `finally` — and it ships into every
 scaffolded tool. It locks the contract:
 
-- `--brief` emits one line per item and keeps a refusal line, with its reason.
+- `--brief` emits one line per item, as `<verdict> <summary>  <name>` with no
+  padding and no glyph, and keeps a refusal line, with its reason; the line
+  is rebuilt from the `--json` items; a reason is cut at 160 characters (the
+  edges, multi-byte characters, a surrogate pair at the cut), while `--json`
+  and human keep it whole; and `--brief` is never longer than the human output,
+  for every sample and for generated items.
 
 - `--json` parses, its `summary` counts match the items, and it carries
   `contract`, `effect` (per command), `exit` (equal to the real exit code), and
@@ -412,8 +429,9 @@ scaffolded tool. It locks the contract:
 
 `test/new-tool.test.mjs` covers the scaffolder, and three repo-level checks:
 the runtime fence is byte-identical in `skeleton/tool.mjs` and
-`bin/new-tool.mjs`; the brief and human item and summary lines are
-byte-identical to 0.1.0 for the sample above; and a freshly scaffolded tool
+`bin/new-tool.mjs`; the human lines and the summary lines
+are byte-identical to 0.1.0, and the brief item lines follow the v3 rule, for
+the sample above; and a freshly scaffolded tool
 passes its own shipped suite with the same fence.
 
 ```sh
@@ -473,7 +491,7 @@ adopted the layer never returns `null`.
 `isOverrideFlag`, `isGoAlias`, `nextStep`, `selfArgv`, `rerunArgv`, `count`,
 `clipText`, `listNames`, `defaultNextAction`, `assertSafeNext`, `CONTROL_CHARS`,
 `escapeControl`, `escapeShell`, `printable`, `shellQuote`, `nextLine`,
-`VERDICT_WIDTH`, `SUMMARY_WIDTH`, `summaryLine`, `briefLine`, `jsonItem`,
+`REASON_CUT`, `summaryLine`, `briefReason`, `briefLine`, `jsonItem`,
 `reportedExit`, `report`, `outputMode`, `usageError`, `environmentError`,
 `helpText`, `readVersion`, `exitAfterFlush`, `HOOK_ERROR`, `__entry`, and `__isMain`. A 0.1.0 tool already declares several of them
 (`SCRIPT_PATH`, `TOOL_NAME`, `glyph`, `report`, …): delete the tool’s own

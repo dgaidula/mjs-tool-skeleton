@@ -609,7 +609,7 @@ gates:
 - The fence is byte-identical to `skeleton/tool.mjs`, and a test proves it
   by hash.
 
-- `--json` reports `"contract": "mjs-tool/2"`.
+- `--json` reports `"contract": "mjs-tool/3"`.
 
 - The tool has been run **exactly as each caller runs it**, and the output
   read as that caller would read it. A caller that names no command (“use the
@@ -630,7 +630,7 @@ gates:
 ## 8. The cheat card: adding `--cheat` to a tool
 
 `--cheat` arrived in skeleton 0.3.0. It is a *should*, additive: a tool
-without it is still `mjs-tool/2`, and nothing here touches the runtime fence,
+without it is still conformant, and nothing here touches the runtime fence,
 the `contract` string or any pinned fence hash, so an adopted tool’s fence
 tests stay green. The change lives entirely above the fence, in five places.
 Do them in order; each is mechanical.
@@ -768,7 +768,7 @@ part no test can check.
 
 The contract is the output, the exit codes and the `next` advice, all of it in
 the fence, and none of it cares which parser filled `values`. A tool built on
-[Commander](https://github.com/tj/commander.js) adopts `mjs-tool/2` without
+[Commander](https://github.com/tj/commander.js) adopts `mjs-tool/3` without
 switching parsers. It gains one dependency, so it is no longer zero-dependency.
 
 **When to start with Commander instead of `parseArgs`.** `parseArgs` is the
@@ -862,6 +862,53 @@ owner before you start: usage errors exiting 1 (Commander’s default), help
 printed after an error, and above all a real run by default with `--dry-run`
 to preview, where the contract dry-runs by default and needs `--go`.
 
+## 10. Re-syncing a tool to a later runtime revision
+
+An adopted tool carries a copy of the runtime fence, and a later skeleton
+changes the block, so the tool’s copy goes stale. The re-sync is mechanical
+and touches the fence, the fence test and every test that pins what the old
+fence printed. It is not an adoption: the tool’s own code stays as it is.
+
+The v3 revision (skeleton 0.4.0, `mjs-tool/3`) is the first. It changes the
+`--brief` item line only: `<verdict> <summary>  <name>`, with no padding and
+no glyph, and a reason cut at 160 characters, so that `--brief` is never longer
+than the human output. The summary line, the `next:`
+line, the human block and every `--json` key are unchanged; only the
+`contract` value in `--json` and the fence’s version marker move, to `mjs-tool/3`
+and `runtime v3`.
+
+1. **Replace the fence wholesale.** Copy the block from `skeleton/tool.mjs`,
+   from the opening line through the closing line, markers included, over the
+   tool’s own. Nothing else in the tool’s code changes unless the fence
+   removed a name the tool used: v3 drops `VERDICT_WIDTH` and `SUMMARY_WIDTH`
+   and adds `REASON_CUT` and `briefReason`. A tool that read the first two (or
+   declared its own `REASON_CUT`) fails to load, loudly, until it stops.
+
+2. **Move the fence test.** Its start and end marker constants say `v3`, the
+   pinned sha256 is the new block’s, and the comment names the skeleton
+   release (0.4.0). The test that compares with the live skeleton checkout
+   passes only once the checkout is on the same revision, so re-sync after the
+   skeleton’s release is on that checkout.
+
+3. **Update the tests that pin brief lines.** Search the tool’s tests for
+   brief item lines written out in full, for the glyphs (`✓ ⚠ • ⊘ ✗`), for
+   padded columns (a regex such as `/ ok /`, which now needs `/^ok /`), and for
+   `"contract": "mjs-tool/2"`. A test that rebuilds the expectation from
+   `--json` needs only the new shape.
+
+4. **Update the callers that parse brief output** (§1 again). A script that
+   cut a brief line by column, or tested for a glyph, reads `--json` instead; a
+   script that grepped for the verdict word as a whole word (`grep -w refuse`)
+   keeps working.
+
+5. **Add the size test** if the tool has samples of its own: run each in both
+   modes and assert the brief output is no longer than the human output. The
+   skeleton’s suite has the shape.
+
+6. **Done** when the tool’s suite is green, its `--brief` run on a real input
+   reads as `<verdict> <summary>  <name>`, and a scan of the fleet shows the
+   tool on `mjs-tool/3` with its fence unedited.
+
 ## Open items for the skeleton
 
 1. **A declared name and version.** A hook so a tool shipped as `lint.mjs`,
@@ -912,5 +959,7 @@ to preview, where the contract dry-runs by default and needs `--go`.
    repo. Items 1 and 4 are cosmetic and cost agents nothing, so they wait for
    whatever next forces a fence revision, and ride along with it. A revision that leaves the `--brief` lines, the
    `--json` keys and the exit codes as they are is a new runtime revision, not a
-   new contract: `contract` stays `mjs-tool/2`. Item 2 lived in the scanner,
-   not the fence, and landed on its own.
+   new contract: `contract` stays as it was. The converse is the rule that made
+   0.4.0 `mjs-tool/3`: a revision that changes the `--brief` lines is a new
+   contract (§10). Item 2 lived in the scanner, not the fence, and landed on
+   its own.
