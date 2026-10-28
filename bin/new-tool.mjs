@@ -80,7 +80,7 @@ function pkgJson(name) {
     type: 'module',
     bin: { [name]: `${name}.mjs` },
     files: [`${name}.mjs`, 'README.md', 'LICENSE'],
-    engines: { node: '>=20' },
+    engines: { node: '>=24' },
     scripts: { test: 'node --test' },
     keywords: [],
     author: 'Danniel T. Gaidula <dan@iceboxind.com>',
@@ -101,7 +101,7 @@ npx ${name} inspect <path>...
 npm install -g ${name}
 \`\`\`
 
-Requires Node 20+. Zero dependencies — the whole tool is one \`.mjs\` file.
+Requires Node 24+. Zero dependencies — the whole tool is one \`.mjs\` file.
 
 ## Usage
 
@@ -154,7 +154,7 @@ MIT © Danniel T. Gaidula
 function claudeMd(name, agentBlock) {
   return `# ${name} — agent guide
 
-Zero-dependency Node 20+ single-file CLI built from
+Zero-dependency Node 24+ single-file CLI built from
 [mjs-tool-skeleton](https://github.com/dgaidula/mjs-tool-skeleton). One file:
 \`${name}.mjs\`. \`README.md\` is the human-facing pitch; this file is the
 agent-facing contract.

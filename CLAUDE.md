@@ -22,7 +22,7 @@ Both end in the same **runtime fence**: the block between
 renderer, the `next` guard and default policy, the exit paths, `--help`,
 `--version`, the entry guard). The tool-specific code sits above it.
 
-Zero dependencies, Node 20+ ESM, no Python. The convention it encodes is real
+Zero dependencies, Node 24+ ESM, no Python. The convention it encodes is real
 and predates this repo (a private pipeline repo of Dan’s); this is the extracted
 public shape, not a copy of that code. The current contract is `mjs-tool/3`.
 

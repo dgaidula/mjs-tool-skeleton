@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Node 24 or newer.** `engines` in the skeleton’s own `package.json` and in every package `new-tool` writes moves from `>=20` to `>=24`, and the README, CLAUDE.md and the generated README say so. Node 20 reached end of life on 2026-04-30 and Node 26 became LTS on 2026-10-28 (nodejs.org dist index and the nodejs/Release schedule, read 2026-10-28). Nothing in the runtime fence changes, so no adopted tool’s fence hash goes stale. Adopted tools move their own `engines` when next touched (D502).
+
 ## 0.4.0 — 2026-10-25
 
 Contract `mjs-tool/3`. The runtime fence changes (so every adopted tool’s
