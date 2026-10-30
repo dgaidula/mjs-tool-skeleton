@@ -79,7 +79,7 @@ function pkgJson(name) {
     description: `TODO: one-line description of ${name}.`,
     type: 'module',
     bin: { [name]: `${name}.mjs` },
-    files: [`${name}.mjs`, 'README.md', 'LICENSE'],
+    files: [`${name}.mjs`, 'README.md', 'CLAUDE.md', 'LICENSE'],
     engines: { node: '>=24' },
     scripts: { test: 'node --test' },
     keywords: [],

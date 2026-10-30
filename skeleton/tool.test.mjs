@@ -112,6 +112,9 @@ test('exit codes: 0 ok, 1 partial, 2 usage', () => {
     writeFileSync(f, 'x');
     assert.equal(run(['inspect', f, '--quiet']).status, 0);
     assert.equal(run(['inspect', path.join(dir, 'missing'), '--quiet']).status, 1);
+    const empty = path.join(dir, 'empty.txt');
+    writeFileSync(empty, '');
+    assert.equal(run(['inspect', empty, '--quiet']).status, 1); // a warn on its own is partial too
 
     const badFlag = run(['inspect', f, '--nope']);
     assert.equal(badFlag.status, 2);
@@ -127,6 +130,20 @@ test('exit codes: 0 ok, 1 partial, 2 usage', () => {
       assert.match(both.stderr, /cannot be combined/);
       assert.equal(both.stdout, ''); // nothing on stdout, not even a partial report
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--brief wins over --quiet: given both, the run prints the brief lines', () => {
+  const dir = tmp();
+  try {
+    const f = path.join(dir, 'a.txt');
+    writeFileSync(f, 'x');
+    const both = run(['inspect', f, '--brief', '--quiet']);
+    assert.equal(both.status, 0);
+    assert.match(both.stdout, /^ok /); // an item line, which --quiet alone never prints
+    assert.equal(both.stdout, run(['inspect', f, '--brief']).stdout);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

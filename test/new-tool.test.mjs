@@ -112,6 +112,47 @@ test('refuses to overwrite an existing directory (exit 1)', () => {
   }
 });
 
+// The relative link targets in a Markdown file (no URL, no bare #anchor), anchors dropped.
+function relativeLinks(md) {
+  return [...md.matchAll(/\]\(([^)\s]+)\)/g)]
+    .map((m) => m[1].split('#')[0])
+    .filter((t) => t && !/^[a-z]+:/i.test(t));
+}
+
+test('engines: the skeleton and a fresh scaffold both require Node 24 or newer', () => {
+  const own = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(own.engines.node, '>=24');
+  const dir = tmp();
+  try {
+    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
+    const pkg = JSON.parse(readFileSync(path.join(dir, 'my-widget', 'package.json'), 'utf8'));
+    assert.equal(pkg.engines.node, '>=24');
+    assert.deepEqual(pkg.engines, own.engines);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the shipped README links only files the package ships', () => {
+  const own = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  for (const target of relativeLinks(readme)) assert.ok(own.files.includes(target), `README links ${target}, not in files`);
+});
+
+test('a scaffolded README links only files its package ships', () => {
+  const dir = tmp();
+  try {
+    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
+    const root = path.join(dir, 'my-widget');
+    const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const links = relativeLinks(readFileSync(path.join(root, 'README.md'), 'utf8'));
+    assert.ok(links.length > 0); // the README does link a file (its agent guide)
+    for (const target of links) assert.ok(pkg.files.includes(target), `README links ${target}, not in files`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('usage errors exit 2', () => {
   const dir = tmp();
   try {

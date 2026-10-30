@@ -49,7 +49,8 @@ tool apply   <path>... [--go]     # mutating: dry run, then --go to act
 | `--quiet` | the summary line only |
 
 Every text mode then ends with one `next:` line (below). `--json` cannot be
-combined with `--brief` or `--quiet`.
+combined with `--brief` or `--quiet`. Given both `--brief` and `--quiet`,
+`--brief` wins: the run prints the brief lines.
 
 **The cheat card (`--cheat`).** A tool should also print a short card of its
 common invocations, in [tldr](https://github.com/tldr-pages/tldr) page format,
@@ -89,7 +90,7 @@ sentence-case description ending in a colon, a blank line, and the command in
 backticks, each pair separated by a blank line. Descriptions are imperative
 (“Simulate”, not “Simulates”), values the user supplies are `{{placeholders}}`,
 and every command starts with the tool’s name. The card lives in one `CHEAT`
-constant beside the `--help` header; [`ADOPTING.md`](ADOPTING.md) §8 is the
+constant beside the `--help` header; [`ADOPTING.md`](https://github.com/dgaidula/mjs-tool-skeleton/blob/main/ADOPTING.md) §8 is the
 checklist for adding it to an existing tool, and `tldr --render card.md` shows
 how it will look.
 
@@ -139,7 +140,7 @@ The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
 ```json
 {
   "tool": "tool",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "contract": "mjs-tool/3",
   "command": "apply",
   "effect": "dry-run",
@@ -179,7 +180,7 @@ The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
 These keys, and each item’s keys (`path`, `name`, `verdict`, `summary`,
 `reason`, `changed`, `data`), are fixed; tool-specific facts go under `data`
 or `state`. The 0.1.0 keys kept their meaning, so a 0.1.0 consumer still
-parses a 0.2.0 tool.
+parses a tool on the current contract.
 
 **The next-action layer.** Every run ends with one piece of advice, so an
 agent babysitting a pipeline can loop *run, read `next`, obey or halt* instead
@@ -328,7 +329,7 @@ the same exit codes.
 
 ```sh
 # from a checkout of this repo
-node bin/new-tool.mjs my-widget --dir ~/sw/github-public
+node bin/new-tool.mjs my-widget --dir ~/projects
 
 # or, once published, without installing
 npx mjs-tool-skeleton my-widget
@@ -356,7 +357,7 @@ runtime fence alone.
 **Which parser.** Keep the template’s `parseArgs` (no dependency) unless the
 tool will have several commands each with its own flags, options with a fixed
 set of values (`--format jpeg|png|webp`), or roughly fifteen or more options.
-Then parse with Commander instead and keep the contract: ADOPTING.md §9.
+Then parse with Commander instead and keep the contract: [`ADOPTING.md`](https://github.com/dgaidula/mjs-tool-skeleton/blob/main/ADOPTING.md) §9.
 
 ## The test suite
 
@@ -443,7 +444,7 @@ npm test      # node --test — runs the skeleton suite and the scaffolder suite
 
 ## Adopting the contract in an existing tool
 
-This section is the code. [`ADOPTING.md`](ADOPTING.md) is the procedure
+This section is the code. [`ADOPTING.md`](https://github.com/dgaidula/mjs-tool-skeleton/blob/main/ADOPTING.md) is the procedure
 around it: finding the callers that move with the tool, choosing verdicts and
 `next`, the safety a mutating tool owes, and what “done” means.
 
@@ -599,12 +600,14 @@ What the fence cannot do for you:
    texts): write those afresh for the tool’s own commands. The lighter path,
    which the 2026-10-03 adoptions took: pin the fence by hash in the tool’s
    own tests, so identical bytes are proven identical, and write only the
-   tool-specific tests ([`ADOPTING.md`](ADOPTING.md) §6).
+   tool-specific tests ([`ADOPTING.md`](https://github.com/dgaidula/mjs-tool-skeleton/blob/main/ADOPTING.md) §6).
 
-5. **Exit-code dialects are an open item.** Some existing tools exit 2 on a
-   refusal, where the contract keeps 2 for usage errors and a refusal is 1;
-   one redefines 1 and 3 for its own polling states. 0.2.0 does not resolve
-   these: the pilot adoption settles them tool by tool.
+5. **Exit-code dialects do not survive adoption.** Some existing tools exit 2
+   on a refusal, where the contract keeps 2 for usage errors and a refusal is
+   1; one redefines 1 and 3 for its own polling states. An adopted tool uses
+   the contract’s codes, 1 for every finding, and puts the kind in the item’s
+   `data`, so a caller branches on `--json`, not on the exit code
+   ([`ADOPTING.md`](https://github.com/dgaidula/mjs-tool-skeleton/blob/main/ADOPTING.md) §1).
 
 ## For agents
 
@@ -618,8 +621,9 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
 ## Requirements
 
 Node 24+ (Node 20 reached end of life on 2026-04-30; 26 is the current LTS). Zero dependencies. No
-Python. A tool that outgrows `parseArgs` can parse with Commander and keep the
-contract: ADOPTING.md §9.
+Python. A POSIX shell: the shipped tests and the `next:` line’s quoting assume
+one; tested on macOS. A tool that outgrows `parseArgs` can parse with Commander and keep the
+contract: [`ADOPTING.md`](https://github.com/dgaidula/mjs-tool-skeleton/blob/main/ADOPTING.md) §9.
 
 ## License
 

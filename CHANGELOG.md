@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-10-30
 
 - **Node 24 or newer.** `engines` in the skeleton’s own `package.json` and in every package `new-tool` writes moves from `>=20` to `>=24`, and the README, CLAUDE.md and the generated README say so. Node 20 reached end of life on 2026-04-30 and Node 26 became LTS on 2026-10-28 (nodejs.org dist index and the nodejs/Release schedule, read 2026-10-28). Nothing in the runtime fence changes, so no adopted tool’s fence hash goes stale. Adopted tools move their own `engines` when next touched (D502).
+- **A scaffold ships its `CLAUDE.md`.** The generated README links it, so `new-tool` now lists it in the generated `files`. The README links `ADOPTING.md` on GitHub (the package does not carry it), says that `--brief` wins over `--quiet`, names its platform, and drops stale 0.2.0 wording. New tests hold a warn-only run at exit 1, `--brief` over `--quiet`, `engines` in the skeleton and a scaffold, and that both READMEs link only files their package ships. The runtime fence is unchanged.
 
 ## 0.4.0 — 2026-10-25
 
