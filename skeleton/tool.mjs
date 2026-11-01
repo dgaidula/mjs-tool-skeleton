@@ -365,15 +365,15 @@ function nextAction(run) {
 // Fail fast on a flag's value: check every value before any work, so a bad one
 // stops the run with one message naming the flag (exit 2, stdout empty) rather
 // than reaching a file, a request or a report. Missing, blank after trim, or
-// (unless `multiline`) holding a line break is a usage error; otherwise the
-// trimmed value comes back. Call it at run time, in main(), never at module top
-// level: it uses usageError() from the runtime block below, which is not yet
-// initialised while the module loads. TODO(tool): run each flag of your own that
-// takes a value through it, as main() does --note.
+// (unless `multiline`) holding a line break (CR, LF, U+2028, U+2029 or U+0085)
+// is a usage error; otherwise the trimmed value comes back. Call it at run time,
+// in main(), never at module top level: it uses usageError() from the runtime
+// block below, which is not yet initialised while the module loads. TODO(tool):
+// run each flag of your own that takes a value through it, as main() does --note.
 function requireValue(flag, value, { multiline = false } = {}) {
   if (typeof value !== 'string') usageError(`${flag} needs a value`);
   if (!value.trim()) usageError(`${flag} must not be blank`);
-  if (!multiline && /[\r\n]/.test(value)) usageError(`${flag} must be one line, with no line break`);
+  if (!multiline && /[\r\n\u2028\u2029\u0085]/.test(value)) usageError(`${flag} must be one line, with no line break`);
   return value.trim();
 }
 

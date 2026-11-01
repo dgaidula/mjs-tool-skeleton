@@ -359,7 +359,8 @@ LICENSE                       the skeleton’s own MIT notice, unchanged
 the name on the README’s `MIT ©` line are yours, never the skeleton’s. They
 come from, in order:
 
-1. `--author "<Name> <email>"`, both parts required, on one line;
+1. `--author "<Name> <email>"`, both parts required, on one line, with no
+   control character;
 2. npm’s `init-author-name` and `init-author-email`, which you set once with
    `npm config set init-author-name "Ada Lovelace"` and
    `npm config set init-author-email ada@example.org`;
@@ -369,9 +370,13 @@ come from, in order:
 4. otherwise the placeholder `TODO: Your Name <you@example.com>` (and
    `MIT © TODO: Your Name`), which is plainly unfinished and easy to grep for.
 
+Sources 2 and 3 are your own user-level settings: `new-tool` asks npm from
+your home folder and reads only git’s global config, so a project’s `.npmrc`
+or a repo’s own `user.name` where you run it never decides the author.
 A source counts when it gives a name; an email beside it is optional there,
 though `--author` insists on one. A config source whose name or email holds a
-line break or an angle bracket is skipped, with a `note:` on stderr naming the
+line break (CR, LF, U+2028, U+2029 or U+0085), another control character or a
+bidi control, or an angle bracket is skipped, with a `note:` on stderr naming the
 key. A lookup that fails or takes more than a few
 seconds counts as unset, and a bad `--author` is a usage error (exit `2`,
 nothing written). The copied `LICENSE` is the one thing that keeps the
@@ -390,7 +395,8 @@ runtime fence alone.
 **Flags that take a value.** The template carries `requireValue(flag, value, {
 multiline })` in the tool body, above the fence, so it is yours to keep and the
 fence stays byte-identical. A flag’s value that is missing, blank after
-trimming, or (unless `multiline`) holds a line break is a usage error naming
+trimming, or (unless `multiline`) holds a line break (CR, LF, U+2028, U+2029
+or U+0085) is a usage error naming
 the flag: exit `2`, stdout empty, before any work. Otherwise you get the trimmed
 value back. `main()` runs the placeholder `--note <text>` of `apply` through
 it; run each flag of your own that takes a value the same way, from `main()`
@@ -666,21 +672,16 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
 
 ## Known limits
 
-- **The author lookups run where you run `new-tool`.** npm and git read their
-  config from the current directory, so a repo-local git identity or a project
-  `.npmrc` there decides the author ahead of your own settings.
-- **The one-line rule checks CR and LF only.** An author value holding
-  U+2028, U+2029, U+0085 or another control character passes.
 - **A timed-out lookup can leave a process running.** When `npm` or `git` on
   `PATH` is a shell wrapper that does not `exec` the real program, the timeout
   stops the wrapper, and its child may run on.
 - **`--author` takes `Name <email>` only.** npm’s `Name <email> (url)` form is
   refused, `init-author-url` is ignored, and a repeated `--author` keeps the
   last.
-- **npm leaves its own caches behind.** Asking npm for the author writes no
-  debug log (`--logs-max=0`), but npm 11 still keeps a compile cache under
-  `$TMPDIR` and, in a home where npm has never run, creates an empty `~/.npm`.
-  Pass `--author` to skip the lookups.
+- **npm may leave an empty `~/.npm`.** Asking npm for the author writes no
+  debug log (`--logs-max=0`) and no compile cache under `$TMPDIR`
+  (`NODE_DISABLE_COMPILE_CACHE=1`), but in a home where npm has never run it
+  still creates an empty `~/.npm`. Pass `--author` to skip the lookups.
 - **No `note:` when the placeholder is used.** A scaffold whose author is
   `TODO: Your Name` says nothing on stderr; grep for it.
 

@@ -192,7 +192,8 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
 in the tool body, above the fence (so it is not part of any adopter’s fence
 hash), and `bin/new-tool.mjs` carries a character-for-character copy, which a
 test holds identical. A missing, blank (after trim) or, unless `multiline`,
-line-broken value calls the fence’s `usageError()`; otherwise the trimmed value
+line-broken value (CR, LF, U+2028, U+2029 or U+0085) calls the fence’s
+`usageError()`; otherwise the trimmed value
 returns. It is called from `main()`, never at module top level (invariant 8: a
 top-level use of a fence name exits 1 before the fence runs). The template’s
 `apply --note <text>` is its worked use, and the scaffolder’s `--author` runs
@@ -203,9 +204,17 @@ through it.
 `new-tool` writes the *user’s* author into a scaffold’s `package.json` and
 README licence line, never this repo’s owner: `--author "<Name> <email>"`, else
 npm’s `init-author-name`/`init-author-email`, else git’s `user.name`/`user.email`
-(with a `note:` on stderr), else the placeholder `TODO: Your Name`. The lookups
-use `execFile` (no shell), a 5 s timeout and `GIT_TERMINAL_PROMPT=0`; a failure
-or timeout is “unset”. They run only after the target is known to be free. The
+(with a `note:` on stderr), else the placeholder `TODO: Your Name`. The two
+config sources are “your own user-level settings” (the README’s and
+`--help`’s words) and nothing else: the lookups run
+with `cwd` set to `os.homedir()`, so npm’s project layer cannot apply, and git
+is asked with `git config --global`, so a repo-local identity never counts.
+`--author` refuses a control character (C0, TAB included, DEL, C1) or a bidi
+control, and a config value holding one is skipped with a `note:`. The lookups
+use `execFile` (no shell), a 5 s timeout, `GIT_TERMINAL_PROMPT=0` and
+`NODE_DISABLE_COMPILE_CACHE=1` (npm 11 would otherwise leave a
+`node-compile-cache` under `$TMPDIR`); a failure or timeout is “unset”. They
+run only after the target is known to be free. The
 copied `LICENSE` keeps the skeleton’s own notice (MIT requires it). Tests give
 every scaffolder run a temporary `HOME`, `NPM_CONFIG_USERCONFIG`,
 `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM=1` and drop the outer

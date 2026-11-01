@@ -210,18 +210,24 @@ test('usage errors exit 2', () => {
 // ---- the author (D583): the flag, else npm, else git, else a placeholder --------------------
 
 // Scaffold `my-widget` with the given config and return what a user would see.
-function scaffold({ npm, git, args = [], env, base } = {}) {
+// It runs in the home unless `cwd(dir)` names another directory of the run's
+// temp dir (made first), and with a TMPDIR of its own.
+function scaffold({ npm, git, args = [], env, base, cwd } = {}) {
   const dir = tmp();
   const home = path.join(dir, 'home');
   const out = path.join(dir, 'out');
+  const temp = path.join(dir, 'tmp');
   try {
-    const r = run(['my-widget', '--dir', out, '--json', ...args], { cwd: home, env: env ?? isolatedEnv(home, { npm, git, base }) });
+    mkdirSync(temp);
+    const where = cwd ? cwd(dir) : home;
+    const r = run(['my-widget', '--dir', out, '--json', ...args], { cwd: where, env: env ?? { ...isolatedEnv(home, { npm, git, base }), TMPDIR: temp } });
     const root = path.join(out, 'my-widget');
     const made = existsSync(root);
     return {
       r,
       made,
       npmLogs: existsSync(path.join(home, '.npm', '_logs')),
+      tempLeft: readdirSync(temp),
       pkg: made ? JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) : null,
       readme: made ? readFileSync(path.join(root, 'README.md'), 'utf8') : null,
       files: made ? Object.fromEntries(['my-widget.mjs', 'README.md', 'CLAUDE.md', 'package.json', 'LICENSE', path.join('test', 'my-widget.test.mjs')]
@@ -275,10 +281,62 @@ test('author: with none configured, a greppable placeholder stands in, and the r
   }
 });
 
-test('author: the lookups write nothing outside the new directory (npm leaves no debug log)', () => {
+test('author: the lookups write nothing outside the new directory (npm leaves no debug log and no compile cache)', () => {
   const s = scaffold(); // the placeholder case: both npm lookups run
   assert.equal(s.r.status, 0, s.r.stderr);
   assert.equal(s.npmLogs, false, 'npm wrote ~/.npm/_logs');
+  assert.equal(s.tempLeft.includes('node-compile-cache'), false, 'npm left a node-compile-cache in TMPDIR');
+});
+
+// A project and a repo with an identity of their own, written directly: a
+// package.json and an .npmrc naming a bait npm author, and a .git whose config
+// names a bait git user (the .git alone with `npm: false`).
+function writeBait(at, { npm = true } = {}) {
+  for (const d of ['objects', 'refs']) mkdirSync(path.join(at, '.git', d), { recursive: true });
+  writeFileSync(path.join(at, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  writeFileSync(path.join(at, '.git', 'config'), '[core]\n\trepositoryformatversion = 0\n[user]\n\tname = Bait Git\n\temail = bait-git@example.com\n');
+  if (!npm) return;
+  writeFileSync(path.join(at, 'package.json'), '{}\n');
+  writeFileSync(path.join(at, '.npmrc'), 'init-author-name=Bait Npm\ninit-author-email=bait-npm@example.com\n');
+}
+
+test('author: only your own user-level settings count, never a project .npmrc or a repo identity around the current directory', () => {
+  const inBait = (dir) => {
+    writeBait(path.join(dir, 'bait'));
+    mkdirSync(path.join(dir, 'bait', 'sub'));
+    return path.join(dir, 'bait', 'sub');
+  };
+  const npm = scaffold({ npm: NPM, git: GIT, cwd: inBait });
+  assert.equal(npm.r.status, 0, npm.r.stderr);
+  assert.equal(npm.pkg.author, 'Npm Person <npm@example.com>');
+  const git = scaffold({ git: GIT, cwd: inBait });
+  assert.equal(git.r.status, 0, git.r.stderr);
+  assert.equal(git.pkg.author, 'Git Person <git@example.com>');
+  const none = scaffold({ cwd: inBait });
+  assert.equal(none.pkg.author, 'TODO: Your Name <you@example.com>');
+  // a home that is itself a git checkout (a dotfiles repo): git's global config only
+  const dotfiles = scaffold({ git: GIT, cwd: (dir) => { writeBait(path.join(dir, 'home'), { npm: false }); return path.join(dir, 'home'); } });
+  assert.equal(dotfiles.pkg.author, 'Git Person <git@example.com>');
+});
+
+// The test home's own guards (its package.json, GIT_CEILING_DIRECTORIES) keep
+// a project or repo above it out of reach, wherever TMPDIR happens to be.
+test('author: a project and a repo around the test home itself are never read', () => {
+  const s = scaffold({ cwd: (dir) => { writeBait(dir); return path.join(dir, 'home'); } });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'TODO: Your Name <you@example.com>');
+});
+
+test('author: isolatedEnv builds on its base: other variables are kept, npm_config_* and GIT_* dropped', () => {
+  const dir = tmp();
+  try {
+    const env = isolatedEnv(path.join(dir, 'home'), { base: { KEEP: '1', npm_config_x: '1', GIT_DIR: '/nowhere' } });
+    assert.equal(env.KEEP, '1');
+    assert.equal('npm_config_x' in env, false);
+    assert.equal('GIT_DIR' in env, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('author: the outer npm_config_* and GIT_* variables never reach the lookups, in any case', () => {
@@ -312,6 +370,44 @@ test('author: a config value with an angle bracket is skipped for the next sourc
   assert.equal(s.r.stderr.trim().split('\n').length, 1);
 });
 
+test('author: a bad npm name with a good git identity gives the git author and both notes', () => {
+  const s = scaffold({ npm: { 'init-author-name': 'Npm <x>', 'init-author-email': 'npm@example.com' }, git: GIT });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'Git Person <git@example.com>');
+  const notes = s.r.stderr.trim().split('\n');
+  assert.equal(notes.length, 2);
+  assert.match(notes[0], /^note: author in npm config skipped: init-author-name holds an angle bracket /);
+  assert.match(notes[1], /^note: author taken from git config \(Git Person <git@example\.com>\); /);
+});
+
+test('author: a bad email skips its source for the next one', () => {
+  const s = scaffold({ npm: { 'init-author-name': 'Npm Person', 'init-author-email': 'npm<@example.com' }, git: GIT });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'Git Person <git@example.com>');
+  assert.match(s.r.stderr, /^note: author in npm config skipped: init-author-email holds an angle bracket /);
+});
+
+test('author: a config value with a line break or a control character is skipped, with a note saying which', () => {
+  for (const [git, what] of [
+    [{ name: 'Ada\\nLovelace', email: 'ada@example.org' }, 'a line break'], // git's \n escape: a real LF
+    [{ name: 'Ada\u2028Lovelace', email: 'ada@example.org' }, 'a line break'],
+    [{ name: 'Ada\u0085Lovelace', email: 'ada@example.org' }, 'a line break'],
+    [{ name: 'Ada\\tLovelace', email: 'ada@example.org' }, 'a control character'], // git's \t escape: a real TAB
+    [{ name: 'Ada\u001b[31mLovelace', email: 'ada@example.org' }, 'a control character'],
+    [{ name: 'Ada Lovelace', email: 'ada\u202e@example.org' }, 'a control character'],
+  ]) {
+    const s = scaffold({ git });
+    const key = git.name.startsWith('Ada Lovelace') ? 'user\\.email' : 'user\\.name';
+    assert.equal(s.r.status, 0, s.r.stderr);
+    assert.equal(s.pkg.author, 'TODO: Your Name <you@example.com>', JSON.stringify(git));
+    assert.match(s.r.stderr, new RegExp(`^note: author in git config skipped: ${key} holds ${what} `), JSON.stringify(git));
+    assert.equal(s.r.stderr.trim().split('\n').length, 1, JSON.stringify(git));
+  }
+  const npm = scaffold({ npm: { 'init-author-name': 'Ada\u202eLovelace' }, git: GIT });
+  assert.equal(npm.pkg.author, 'Git Person <git@example.com>');
+  assert.match(npm.r.stderr, /^note: author in npm config skipped: init-author-name holds a control character /);
+});
+
 test('author: a source with a name and no email gives a name-only author; one with no name is skipped', () => {
   const nameOnly = scaffold({ npm: { 'init-author-name': 'Solo Person' }, git: GIT });
   assert.equal(nameOnly.pkg.author, 'Solo Person');
@@ -332,6 +428,27 @@ test('author: --author fails fast (exit 2, stdout empty, one message naming the 
   assert.equal(missing.r.status, 2);
   assert.equal(missing.r.stdout, '');
   assert.match(missing.r.stderr, /--author/);
+});
+
+test('author: --author refuses a Unicode line break, a control character and a bidi control (exit 2, nothing written)', () => {
+  for (const [value, message] of [
+    ['Ada\u2028Lovelace <ada@example.org>', /^error: --author must be one line, with no line break/],
+    ['Ada\u2029Lovelace <ada@example.org>', /^error: --author must be one line, with no line break/],
+    ['Ada\u0085Lovelace <ada@example.org>', /^error: --author must be one line, with no line break/],
+    ['Ada\tLovelace <ada@example.org>', /^error: --author must not hold a control character/],
+    ['Ada\u0001Lovelace <ada@example.org>', /^error: --author must not hold a control character/],
+    ['Ada\u001b[31mLovelace <ada@example.org>', /^error: --author must not hold a control character/],
+    ['Ada\u007fLovelace <ada@example.org>', /^error: --author must not hold a control character/],
+    ['Ada\u009bLovelace <ada@example.org>', /^error: --author must not hold a control character/],
+    ['Ada Lovelace <ada\u202e@example.org>', /^error: --author must not hold a control character/],
+    ['Ada\u2066Lovelace <ada@example.org>', /^error: --author must not hold a control character/],
+  ]) {
+    const s = scaffold({ npm: NPM, args: ['--author', value] });
+    assert.equal(s.r.status, 2, JSON.stringify(value));
+    assert.equal(s.r.stdout, '', JSON.stringify(value));
+    assert.match(s.r.stderr, message, JSON.stringify(value));
+    assert.equal(s.made, false, JSON.stringify(value));
+  }
 });
 
 test('author: --author refuses a second address, a bare word, an angle bracket in the name and a space in the email', () => {
@@ -380,7 +497,7 @@ test('author: a refusal (target exists) does not look the author up', () => {
 
 // The 5 s lookup timeout is pinned by the clock: npm hangs for 60 s here. (Not
 // a check for a shell: `sh -c` execs a lone command, so the stub cannot tell.)
-test('author: a lookup that fails or times out (within the 5 s limit) counts as unset; git is asked for user.name and user.email, never to prompt', { timeout: 20000 }, () => {
+test('author: a lookup that fails or times out (within the 5 s limit) counts as unset; git is asked for its global user.name and user.email, never to prompt', { timeout: 20000 }, () => {
   const dir = tmp();
   try {
     const bin = path.join(dir, 'bin');
@@ -399,7 +516,7 @@ test('author: a lookup that fails or times out (within the 5 s limit) counts as 
     assert.equal(r.status, 0, r.stderr);
     assert.equal(JSON.parse(readFileSync(path.join(out, 'my-widget', 'package.json'), 'utf8')).author, 'TODO: Your Name <you@example.com>');
     const asked = readFileSync(log, 'utf8').trim().split('\n').sort();
-    assert.deepEqual(asked, ['prompt=0 args=config user.email', 'prompt=0 args=config user.name']);
+    assert.deepEqual(asked, ['prompt=0 args=config --global user.email', 'prompt=0 args=config --global user.name']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

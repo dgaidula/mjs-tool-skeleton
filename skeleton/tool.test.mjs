@@ -143,6 +143,7 @@ test('requireValue: returns the trimmed value; a missing, blank or multi-line on
   assert.equal(requireValue('--x', '  a value  '), 'a value');
   assert.equal(requireValue('--x', 'a\nb', { multiline: true }), 'a\nb');
   assert.equal(requireValue('--x', '\n a\nb \n', { multiline: true }), 'a\nb');
+  assert.equal(requireValue('--x', 'a\u2028b\u2029c\u0085d', { multiline: true }), 'a\u2028b\u2029c\u0085d');
 
   const realExit = process.exit;
   const realError = console.error;
@@ -156,6 +157,7 @@ test('requireValue: returns the trimmed value; a missing, blank or multi-line on
   for (const [value, options] of [
     [undefined, {}], [null, {}], [7, {}], ['', {}], ['   ', {}], ['\t\n', {}], ['\r', { multiline: true }],
     ['a\nb', {}], ['a\rb', {}], ['a\r\nb', undefined], ['a\n', {}], ['\nb', {}],
+    ['a\u2028b', {}], ['a\u2029b', {}], ['a\u0085b', {}], // the Unicode line breaks count too
   ]) {
     const got = failure(() => requireValue('--note', value, options));
     assert.equal(got.code, 2, JSON.stringify(value));

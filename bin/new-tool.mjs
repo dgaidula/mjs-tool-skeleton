@@ -9,8 +9,8 @@
 // the same fenced runtime block (contract mjs-tool/3).
 //
 // It has no dry run and no --go. All it writes is a directory that did not
-// exist (apart from npm’s own caches when it asks npm for the author; see the
-// README’s Known limits), and it refuses when the directory does, so every run acts (--json
+// exist (apart from the empty ~/.npm that npm may create when asked for the
+// author; see the README’s Known limits), and it refuses when the directory does, so every run acts (--json
 // reports effect "applied"). That is its one deliberate exception to the
 // contract's dry-run gate.
 //
@@ -25,13 +25,17 @@
 //
 // The author written into the new tool's package.json and README licence line
 // is yours, never the skeleton's. It comes from, in order:
-//   1. --author "<Name> <email>" (both required, on one line);
+//   1. --author "<Name> <email>" (both required, on one line, with no control
+//      character);
 //   2. npm's init-author-name and init-author-email (set them once with
 //      `npm config set init-author-name "<Name>"` and the same for -email);
 //   3. git's user.name and user.email, with a `note:` on stderr saying so;
 //   4. the placeholder "TODO: Your Name <you@example.com>", to fill in.
-// A source counts when it gives a name; a config source whose name or email
-// holds a line break or an angle bracket is skipped, with a `note:` on stderr
+// Sources 2 and 3 are your own user-level settings: npm is asked from your
+// home folder and git reads only its global config, so a project's .npmrc or
+// a repo's identity where you run new-tool never counts. A source counts when
+// it gives a name; a config source whose name or email holds a line break, a
+// control character or an angle bracket is skipped, with a `note:` on stderr
 // saying which. The copied LICENSE file keeps the
 // skeleton's own copyright notice: the MIT licence requires it to travel with
 // the code.
@@ -59,6 +63,7 @@ import {
   dirname, join, resolve, relative,
 } from 'node:path';
 import { execFile } from 'node:child_process';
+import { homedir } from 'node:os';
 import { parseArgs, promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -266,24 +271,31 @@ function nextAction(run) {
 
 // A flag's value, checked before any work (the same helper the template's tool
 // body carries; a test holds the two copies identical). Missing, blank after
-// trim, or (unless multiline) holding a line break: a usage error naming the
-// flag, exit 2, stdout empty. Returns the trimmed value. Call it at run time,
-// never at module top level: the names it uses live in the runtime block below.
+// trim, or (unless multiline) holding a line break (CR, LF, U+2028, U+2029 or
+// U+0085): a usage error naming the flag, exit 2, stdout empty. Returns the
+// trimmed value. Call it at run time, never at module top level: the names it
+// uses live in the runtime block below.
 function requireValue(flag, value, { multiline = false } = {}) {
   if (typeof value !== 'string') usageError(`${flag} needs a value`);
   if (!value.trim()) usageError(`${flag} must not be blank`);
-  if (!multiline && /[\r\n]/.test(value)) usageError(`${flag} must be one line, with no line break`);
+  if (!multiline && /[\r\n\u2028\u2029\u0085]/.test(value)) usageError(`${flag} must be one line, with no line break`);
   return value.trim();
 }
 
+// An author is one line of plain text: no line break (the same set as
+// requireValue's), and no other character the runtime's printable() escapes
+// (C0 controls, TAB included here, DEL, C1, the bidi controls).
+const AUTHOR_LINE_BREAK = /[\r\n\u2028\u2029\u0085]/;
+const AUTHOR_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+
 // A name and an optional email as one author, or null when there is no usable
-// name. Every source is held to the one-line rule, and a name with an angle
-// bracket would not parse back out of "Name <email>".
+// name. Every source is held to the one-line, no-control-character rule, and a
+// name with an angle bracket would not parse back out of "Name <email>".
 function authorOf(name, email, source) {
   const n = String(name ?? '').trim();
   const e = String(email ?? '').trim();
-  const oneLine = (t) => !/[\r\n<>]/.test(t);
-  if (!n || !oneLine(n) || !oneLine(e)) return null;
+  const plain = (t) => !AUTHOR_CONTROL.test(t) && !/[<>]/.test(t);
+  if (!n || !plain(n) || !plain(e)) return null;
   return { name: n, email: e, line: e ? `${n} <${e}>` : n, source };
 }
 
@@ -291,6 +303,7 @@ function authorOf(name, email, source) {
 // never reaches a package.json. Anything else is a usage error naming the flag.
 function authorFromFlag(value) {
   const text = requireValue('--author', value);
+  if (AUTHOR_CONTROL.test(text)) usageError('--author must not hold a control character (a tab, an escape, a bidi control)');
   const m = /^([^<>]+?)\s*<([^<>\s]+@[^<>\s]+)>$/.exec(text);
   if (!m) usageError('--author needs a name and an email, as "<Name> <email>" (for example "Ada Lovelace <ada@example.com>")');
   return authorOf(m[1], m[2], 'flag');
@@ -298,11 +311,14 @@ function authorFromFlag(value) {
 
 // One config value, or '' when the tool is missing, the key is unset, the call
 // fails, or it takes more than a few seconds. execFile, so no shell; git never
-// stops to ask a question.
+// stops to ask a question. It runs in the user's home folder, so a project's
+// .npmrc or a repo's git config around the current directory never counts,
+// and node keeps no compile cache for npm under $TMPDIR.
 async function lookup(cmd, args) {
   try {
     const { stdout } = await execFileAsync(cmd, args, {
-      timeout: 5000, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      cwd: homedir(), timeout: 5000, encoding: 'utf8',
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', NODE_DISABLE_COMPILE_CACHE: '1' },
     });
     return stdout.trim();
   } catch {
@@ -311,21 +327,24 @@ async function lookup(cmd, args) {
 }
 
 // The flag's author if given, else npm's init-author-*, else git's user.*, else
-// the placeholder. npm runs with --logs-max=0, so it writes no debug log under
-// ~/.npm/_logs. npm may still create an empty ~/.npm and its compile cache under
-// $TMPDIR (README, Known limits). A source whose
-// name or email breaks the one-line, no-angle-bracket rule is skipped with a note.
+// the placeholder: only the user's own settings, since npm runs from the home
+// folder and git reads its global config alone. npm runs with --logs-max=0, so
+// it writes no debug log under ~/.npm/_logs; it may still create an empty
+// ~/.npm in a home where it never ran (README, Known limits). A source whose
+// name or email breaks the one-line, no-control-character, no-angle-bracket
+// rule is skipped with a note.
 async function resolveAuthor(fromFlag) {
   if (fromFlag) return fromFlag;
   const sources = [
     ['npm', 'npm', (key) => ['config', 'get', key, '--logs-max=0'], 'init-author-name', 'init-author-email'],
-    ['git', 'git', (key) => ['config', key], 'user.name', 'user.email'],
+    ['git', 'git', (key) => ['config', '--global', key], 'user.name', 'user.email'],
   ];
   for (const [source, cmd, argsFor, nameKey, emailKey] of sources) {
     const [name, email] = await Promise.all([lookup(cmd, argsFor(nameKey)), lookup(cmd, argsFor(emailKey))]);
-    const bad = name && [[nameKey, name], [emailKey, email]].find(([, v]) => /[\r\n<>]/.test(v));
+    const bad = name && [[nameKey, name], [emailKey, email]].find(([, v]) => AUTHOR_CONTROL.test(v) || /[<>]/.test(v));
     if (bad) {
-      console.error(`note: author in ${source} config skipped: ${bad[0]} holds ${/[\r\n]/.test(bad[1]) ? 'a line break' : 'an angle bracket'} (an author is one line, with no < or > in the name or email)`);
+      const what = AUTHOR_LINE_BREAK.test(bad[1]) ? 'a line break' : AUTHOR_CONTROL.test(bad[1]) ? 'a control character' : 'an angle bracket';
+      console.error(`note: author in ${source} config skipped: ${bad[0]} holds ${what} (an author is one line, with no control character and no < or > in the name or email)`);
       continue;
     }
     const found = authorOf(name, email, source);
