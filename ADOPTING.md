@@ -276,8 +276,8 @@ on it before you touch it.
   needed. An adopted tool that wants it copies the function from
   `skeleton/tool.mjs` into its own code above the fence, and calls it from
   `main()` for each flag that takes a value, never at module top level (it
-  calls the fence’s `usageError()`, which is not yet defined while the module
-  loads).
+  calls the fence’s `usageError()`, which uses runtime names that are not yet
+  initialised while the module loads).
 
 ## 3. Verdicts: one meaning each
 

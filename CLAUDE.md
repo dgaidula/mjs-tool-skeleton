@@ -209,8 +209,10 @@ or timeout is “unset”. They run only after the target is known to be free. T
 copied `LICENSE` keeps the skeleton’s own notice (MIT requires it). Tests give
 every scaffolder run a temporary `HOME`, `NPM_CONFIG_USERCONFIG`,
 `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM=1` and drop the outer
-`npm_config_*`/`GIT_*` variables: a real `~/.npmrc` can hold credentials and is
-never read. Keep that isolation in any new scaffolder test.
+`npm_config_*`/`GIT_*` variables (from a `base` env the tests can pass in); the
+temp home holds a `package.json` and `GIT_CEILING_DIRECTORIES` stops at its
+parent, so neither npm nor git walks up into an outer project or repo. A real
+`~/.npmrc` can hold credentials and is never read. Keep that isolation in any new scaffolder test.
 
 ## The `<tool>` placeholder and substitution
 

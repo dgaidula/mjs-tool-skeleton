@@ -675,6 +675,10 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
 - **`--author` takes `Name <email>` only.** npm’s `Name <email> (url)` form is
   refused, `init-author-url` is ignored, and a repeated `--author` keeps the
   last.
+- **npm leaves its own caches behind.** Asking npm for the author writes no
+  debug log (`--logs-max=0`), but npm 11 still keeps a compile cache under
+  `$TMPDIR` and, in a home where npm has never run, creates an empty `~/.npm`.
+  Pass `--author` to skip the lookups.
 - **No `note:` when the placeholder is used.** A scaffold whose author is
   `TODO: Your Name` says nothing on stderr; grep for it.
 

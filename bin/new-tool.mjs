@@ -9,7 +9,8 @@
 // the same fenced runtime block (contract mjs-tool/3).
 //
 // It has no dry run and no --go. All it writes is a directory that did not
-// exist, and it refuses when the directory does, so every run acts (--json
+// exist (apart from npm’s own caches when it asks npm for the author; see the
+// README’s Known limits), and it refuses when the directory does, so every run acts (--json
 // reports effect "applied"). That is its one deliberate exception to the
 // contract's dry-run gate.
 //
@@ -311,7 +312,8 @@ async function lookup(cmd, args) {
 
 // The flag's author if given, else npm's init-author-*, else git's user.*, else
 // the placeholder. npm runs with --logs-max=0, so it writes no debug log under
-// ~/.npm/_logs: a scaffold writes nothing but its own directory. A source whose
+// ~/.npm/_logs. npm may still create an empty ~/.npm and its compile cache under
+// $TMPDIR (README, Known limits). A source whose
 // name or email breaks the one-line, no-angle-bracket rule is skipped with a note.
 async function resolveAuthor(fromFlag) {
   if (fromFlag) return fromFlag;
