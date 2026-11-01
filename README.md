@@ -8,6 +8,8 @@ rich human output, a one-line-per-item `--brief`, machine-readable `--json`,
 and a `--quiet` summary, with a dry-run mutation gate, honest exit codes, and
 one line of advice on what to do next.
 
+**Hardened:** 2026-11-01 · 7612e63 · gate CLOSED WITH FOLLOW-UPS
+
 ## The problem
 
 A CLI written for a person and a CLI written for an agent pull in opposite
