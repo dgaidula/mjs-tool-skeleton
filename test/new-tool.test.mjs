@@ -1,8 +1,8 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
-  mkdtempSync, existsSync, writeFileSync, readFileSync, rmSync, statSync, mkdirSync,
+  mkdtempSync, existsSync, writeFileSync, readFileSync, rmSync, statSync, mkdirSync, chmodSync, readdirSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,8 +12,37 @@ import { fileURLToPath } from 'node:url';
 const NEW_TOOL = fileURLToPath(new URL('../bin/new-tool.mjs', import.meta.url));
 const SKELETON = fileURLToPath(new URL('../skeleton/tool.mjs', import.meta.url));
 
+// The scaffolder reads the user's npm and git config for the author. A test must
+// never see a real one (~/.npmrc can hold credentials; a git identity would leak
+// into the expected output), so every run gets a home of its own: empty unless
+// the test writes a config into it. The files are written directly, not through
+// npm or git, and every npm_config_* and GIT_* variable of the outer environment
+// is dropped (npm test sets some).
+function isolatedEnv(home, { npm = {}, git = {} } = {}) {
+  mkdirSync(home, { recursive: true });
+  writeFileSync(path.join(home, 'npmrc'), Object.entries(npm).map(([k, v]) => `${k}=${v}\n`).join(''));
+  writeFileSync(path.join(home, 'gitconfig'), Object.keys(git).length
+    ? `[user]\n${Object.entries(git).map(([k, v]) => `\t${k} = ${v}\n`).join('')}` : '');
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GIT_)/i.test(k)));
+  return {
+    ...env,
+    HOME: home,
+    XDG_CONFIG_HOME: path.join(home, 'xdg'),
+    NPM_CONFIG_USERCONFIG: path.join(home, 'npmrc'),
+    NPM_CONFIG_GLOBALCONFIG: path.join(home, 'globalrc'),
+    GIT_CONFIG_GLOBAL: path.join(home, 'gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
+  };
+}
+
+// The home every plain run() shares: no author configured anywhere. It is a
+// directory that is no git checkout, and the runs start in it.
+const BASE_HOME = mkdtempSync(path.join(tmpdir(), 'new-tool-home-'));
+const BASE_ENV = isolatedEnv(BASE_HOME);
+after(() => rmSync(BASE_HOME, { recursive: true, force: true }));
+
 function run(args, opts = {}) {
-  return spawnSync('node', [NEW_TOOL, ...args], { encoding: 'utf8', timeout: 20000, ...opts });
+  return spawnSync('node', [NEW_TOOL, ...args], { encoding: 'utf8', timeout: 30000, cwd: BASE_HOME, env: BASE_ENV, ...opts });
 }
 function tmp() {
   return mkdtempSync(path.join(tmpdir(), 'new-tool-'));
@@ -171,6 +200,149 @@ test('usage errors exit 2', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- the author (D583): the flag, else npm, else git, else a placeholder --------------------
+
+// Scaffold `my-widget` with the given config and return what a user would see.
+function scaffold({ npm, git, args = [], env } = {}) {
+  const dir = tmp();
+  const home = path.join(dir, 'home');
+  const out = path.join(dir, 'out');
+  try {
+    const r = run(['my-widget', '--dir', out, '--json', ...args], { cwd: home, env: env ?? isolatedEnv(home, { npm, git }) });
+    const root = path.join(out, 'my-widget');
+    const made = existsSync(root);
+    return {
+      r,
+      made,
+      pkg: made ? JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) : null,
+      readme: made ? readFileSync(path.join(root, 'README.md'), 'utf8') : null,
+      files: made ? Object.fromEntries(['my-widget.mjs', 'README.md', 'CLAUDE.md', 'package.json', 'LICENSE', path.join('test', 'my-widget.test.mjs')]
+        .map((rel) => [rel, readFileSync(path.join(root, rel), 'utf8')])) : null,
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const licenceLine = (readme) => readme.split('\n').find((l) => l.startsWith('MIT © '));
+const NPM = { 'init-author-name': 'Npm Person', 'init-author-email': 'npm@example.com' };
+const GIT = { name: 'Git Person', email: 'git@example.com' };
+
+test('author: --author wins; its name is in package.json and the README licence line; no note', () => {
+  const s = scaffold({ npm: NPM, git: GIT, args: ['--author', '  Ada Lovelace   <ada@example.org> '] });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'Ada Lovelace <ada@example.org>');
+  assert.equal(licenceLine(s.readme), 'MIT © Ada Lovelace');
+  assert.equal(s.r.stderr, '');
+});
+
+test('author: npm config (init-author-name and -email) comes before git, with no note', () => {
+  const s = scaffold({ npm: NPM, git: GIT });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'Npm Person <npm@example.com>');
+  assert.equal(licenceLine(s.readme), 'MIT © Npm Person');
+  assert.equal(s.r.stderr, '');
+});
+
+test('author: git config is the fallback, and a note on stderr says the author came from git', () => {
+  const s = scaffold({ git: GIT });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'Git Person <git@example.com>');
+  assert.equal(licenceLine(s.readme), 'MIT © Git Person');
+  assert.match(s.r.stderr, /^note: author taken from git config \(Git Person <git@example\.com>\); /);
+  assert.equal(s.r.stderr.trim().split('\n').length, 1); // one line, and stdout stays JSON only
+  assert.equal(JSON.parse(s.r.stdout).summary.ok, 6);
+});
+
+test('author: with none configured, a greppable placeholder stands in, and the real owner appears nowhere but LICENSE', () => {
+  const s = scaffold();
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'TODO: Your Name <you@example.com>');
+  assert.equal(licenceLine(s.readme), 'MIT © TODO: Your Name');
+  assert.equal(s.r.stderr, '');
+  // the copied LICENSE is the skeleton's own, byte for byte (MIT requires its notice to travel)
+  assert.equal(s.files.LICENSE, readFileSync(new URL('../LICENSE', import.meta.url), 'utf8'));
+  assert.match(s.files.LICENSE, /Copyright \(c\) .*Danniel T\. Gaidula/);
+  for (const [rel, text] of Object.entries(s.files)) {
+    if (rel !== 'LICENSE') assert.doesNotMatch(text, /Danniel|Gaidula <|iceboxind/, `${rel} names the skeleton's owner`);
+  }
+});
+
+test('author: a source with a name and no email gives a name-only author; one with no name is skipped', () => {
+  const nameOnly = scaffold({ npm: { 'init-author-name': 'Solo Person' }, git: GIT });
+  assert.equal(nameOnly.pkg.author, 'Solo Person');
+  const emailOnly = scaffold({ npm: { 'init-author-email': 'orphan@example.com' }, git: GIT });
+  assert.equal(emailOnly.pkg.author, 'Git Person <git@example.com>');
+});
+
+test('author: --author fails fast (exit 2, stdout empty, one message naming the flag, nothing written)', () => {
+  for (const value of ['', '   ', 'Ada\nLovelace <ada@example.org>', 'Ada <ada@example.org>\r\n', 'Ada Lovelace', 'Ada <>', '<ada@example.org>', 'Ada <not an email>', 'Ada <ada@example.org> extra']) {
+    const s = scaffold({ npm: NPM, args: ['--author', value] });
+    assert.equal(s.r.status, 2, JSON.stringify(value));
+    assert.equal(s.r.stdout, '', JSON.stringify(value));
+    assert.match(s.r.stderr, /^error: --author /, JSON.stringify(value));
+    assert.equal(s.r.stderr.trim().split('\n').length, 2, JSON.stringify(value)); // the message and the --help hint
+    assert.equal(s.made, false, JSON.stringify(value));
+  }
+  const missing = scaffold({ args: ['--author'] });
+  assert.equal(missing.r.status, 2);
+  assert.equal(missing.r.stdout, '');
+  assert.match(missing.r.stderr, /--author/);
+});
+
+test('author: a refusal (target exists) does not look the author up', () => {
+  const dir = tmp();
+  try {
+    mkdirSync(path.join(dir, 'my-widget'));
+    const bin = path.join(dir, 'bin');
+    mkdirSync(bin);
+    const log = path.join(dir, 'log');
+    for (const tool of ['npm', 'git']) {
+      writeFileSync(path.join(bin, tool), `#!/bin/sh\necho "$0" >> '${log}'\nexit 1\n`);
+      chmodSync(path.join(bin, tool), 0o755);
+    }
+    const r = spawnSync(process.execPath, [NEW_TOOL, 'my-widget', '--dir', dir, '--quiet'], {
+      encoding: 'utf8', cwd: BASE_HOME, env: { ...BASE_ENV, PATH: `${bin}:${BASE_ENV.PATH}` },
+    });
+    assert.equal(r.status, 1);
+    assert.equal(existsSync(log), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('author: a lookup that fails or times out counts as unset; git is asked without a shell, never to prompt', { timeout: 20000 }, () => {
+  const dir = tmp();
+  try {
+    const bin = path.join(dir, 'bin');
+    mkdirSync(bin);
+    const log = path.join(dir, 'log');
+    // npm hangs (the scaffolder gives up on it); git logs what it was given and fails
+    writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nexec sleep 60\n');
+    writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "prompt=$GIT_TERMINAL_PROMPT args=$*" >> '${log}'\nexit 1\n`);
+    for (const tool of ['npm', 'git']) chmodSync(path.join(bin, tool), 0o755);
+    const out = path.join(dir, 'out');
+    const r = spawnSync(process.execPath, [NEW_TOOL, 'my-widget', '--dir', out, '--json'], {
+      encoding: 'utf8', timeout: 30000, cwd: BASE_HOME, env: { ...BASE_ENV, PATH: `${bin}:${BASE_ENV.PATH}` },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(readFileSync(path.join(out, 'my-widget', 'package.json'), 'utf8')).author, 'TODO: Your Name <you@example.com>');
+    const asked = readFileSync(log, 'utf8').trim().split('\n').sort();
+    assert.deepEqual(asked, ['prompt=0 args=config user.email', 'prompt=0 args=config user.name']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('author: the scaffolder\'s requireValue is the template\'s, character for character', () => {
+  const fn = (file) => {
+    const src = readFileSync(file, 'utf8');
+    const start = src.indexOf('function requireValue(');
+    assert.ok(start >= 0, file);
+    return src.slice(start, src.indexOf('\n}\n', start) + 2);
+  };
+  assert.equal(fn(NEW_TOOL), fn(SKELETON));
 });
 
 // ---- contract mjs-tool/3: one runtime, brief by the v3 rule, human frozen -------------------

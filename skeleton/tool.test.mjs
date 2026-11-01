@@ -135,6 +135,65 @@ test('exit codes: 0 ok, 1 partial, 2 usage', () => {
   }
 });
 
+// requireValue() is called by main() for a flag that takes a value; this is the
+// pattern a tool's own such flags follow. The blank, missing and multi-line
+// cases come before any work, so a --go run with a bad value touches nothing.
+test('requireValue: returns the trimmed value; a missing, blank or multi-line one is a usage error naming the flag', async () => {
+  const { requireValue } = await import(TOOL_URL.href);
+  assert.equal(requireValue('--x', '  a value  '), 'a value');
+  assert.equal(requireValue('--x', 'a\nb', { multiline: true }), 'a\nb');
+  assert.equal(requireValue('--x', '\n a\nb \n', { multiline: true }), 'a\nb');
+
+  const realExit = process.exit;
+  const realError = console.error;
+  const failure = (call) => {
+    const lines = [];
+    process.exit = (code) => { throw Object.assign(new Error('exit'), { code }); };
+    console.error = (line) => lines.push(line);
+    try { call(); } catch (e) { return { code: e.code, lines }; } finally { process.exit = realExit; console.error = realError; }
+    return { code: null, lines };
+  };
+  for (const [value, options] of [
+    [undefined, {}], [null, {}], [7, {}], ['', {}], ['   ', {}], ['\t\n', {}], ['\r', { multiline: true }],
+    ['a\nb', {}], ['a\rb', {}], ['a\r\nb', undefined], ['a\n', {}], ['\nb', {}],
+  ]) {
+    const got = failure(() => requireValue('--note', value, options));
+    assert.equal(got.code, 2, JSON.stringify(value));
+    assert.match(got.lines[0], /^error: --note /, JSON.stringify(value));
+  }
+});
+
+test('--note is checked before any work: a bad value is exit 2 with stdout empty and nothing touched under --go', () => {
+  const dir = tmp();
+  try {
+    const f = path.join(dir, 'a.txt');
+    writeFileSync(f, 'x');
+    const old = new Date('2020-01-01T00:00:00Z');
+    utimesSync(f, old, old);
+    for (const value of ['', '   ', 'one\ntwo', 'one\r\ntwo', 'tail\n']) {
+      for (const mode of ['--brief', '--json', '--quiet', null]) {
+        const r = run(['apply', f, '--go', '--note', value, ...(mode ? [mode] : [])]);
+        assert.equal(r.status, 2, `${JSON.stringify(value)} ${mode}`);
+        assert.equal(r.stdout, '', `${JSON.stringify(value)} ${mode}`);
+        assert.match(r.stderr, /^error: --note /);
+        assert.match(r.stderr, /--help/);
+      }
+    }
+    const noValue = run(['apply', f, '--go', '--note']);
+    assert.equal(noValue.status, 2); // parseArgs refuses a missing value
+    assert.equal(noValue.stdout, '');
+    assert.equal(statSync(f).mtimeMs, old.getTime()); // never reached the work
+
+    const ok = run(['apply', f, '--note', '  fixed up  ', '--json']);
+    assert.equal(ok.status, 0);
+    assert.equal(JSON.parse(ok.stdout).items[0].data.note, 'fixed up'); // trimmed
+    // and the advice keeps the flag: the next --go is the same command with --go added
+    assert.ok(JSON.parse(ok.stdout).next.argv.includes('--note'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('--brief wins over --quiet: given both, the run prints the brief lines', () => {
   const dir = tmp();
   try {

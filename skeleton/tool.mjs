@@ -7,7 +7,8 @@
 //
 // Usage:
 //   <tool> inspect <path>...            read-only: report each path
-//   <tool> apply   <path>... [--go]     mutating: dry run, then --go to act
+//   <tool> apply   <path>... [--go] [--note <text>]
+//                                       mutating: dry run, then --go to act
 //   <tool> --help | --version | --cheat
 //
 // Commands:
@@ -46,6 +47,11 @@
 // Flags:
 //   --go        apply: perform the mutation (default is a dry run).
 //   --yes, -y   apply: pre-confirm any protected target (for unattended runs).
+//   --note <text>
+//               apply: a placeholder one-line note, recorded in each item's
+//               `data`. It stands for any flag that takes a value: a missing,
+//               blank or multi-line value is a usage error (exit 2) naming the
+//               flag, before any work (see requireValue below).
 //   --brief     one line per item (see above).
 //   --json      machine-readable output (see above).
 //   --quiet     summary line only.
@@ -201,7 +207,7 @@ function inspectOne(path) {
 // Mutating per-path work. Dry run unless `go`. TODO(tool): replace the mtime
 // touch with your tool's real mutation; keep the dry-run path a faithful
 // preview of what --go would do.
-async function applyOne(path, { go, yes }) {
+async function applyOne(path, { go, yes, note }) {
   const item = { command: 'apply', path, name: basename(path), reason: '', changed: false, data: null };
   const st = statTarget(item);
   if (!st) return item;
@@ -221,7 +227,7 @@ async function applyOne(path, { go, yes }) {
   }
 
   item.kind = 'file';
-  item.data = { kind: 'file', bytes: st.size };
+  item.data = { kind: 'file', bytes: st.size, ...(note === undefined ? {} : { note }) };
   const protectedTarget = needsConfirmation(path);
   item.protectedTarget = protectedTarget;
 
@@ -354,6 +360,23 @@ function nextAction(run) {
   return next;
 }
 
+// ---- argument values --------------------------------------------------------
+
+// Fail fast on a flag's value: check every value before any work, so a bad one
+// stops the run with one message naming the flag (exit 2, stdout empty) rather
+// than reaching a file, a request or a report. Missing, blank after trim, or
+// (unless `multiline`) holding a line break is a usage error; otherwise the
+// trimmed value comes back. Call it at run time, in main(), never at module top
+// level: it uses usageError() from the runtime block below, which is not yet
+// initialised while the module loads. TODO(tool): run each flag of your own that
+// takes a value through it, as main() does --note.
+function requireValue(flag, value, { multiline = false } = {}) {
+  if (typeof value !== 'string') usageError(`${flag} needs a value`);
+  if (!value.trim()) usageError(`${flag} must not be blank`);
+  if (!multiline && /[\r\n]/.test(value)) usageError(`${flag} must be one line, with no line break`);
+  return value.trim();
+}
+
 // ---- CLI --------------------------------------------------------------------
 
 async function main() {
@@ -371,6 +394,7 @@ async function main() {
         quiet: { type: 'boolean' },
         go: { type: 'boolean' },
         yes: { type: 'boolean', short: 'y' },
+        note: { type: 'string' },
       },
     });
   } catch (e) {
@@ -402,6 +426,7 @@ async function main() {
     usageError(`unknown command \`${command}\` (expected \`inspect\` or \`apply\`)`);
   }
   if (paths.length === 0) usageError(`\`${command}\` needs at least one <path>`);
+  const note = values.note === undefined ? undefined : requireValue('--note', values.note);
 
   const env = checkEnvironment();
   if (!env.ok) environmentError(env.message);
@@ -409,13 +434,16 @@ async function main() {
   if (command === 'inspect' && values.go) {
     console.error('note: --go has no effect on `inspect` (read-only)');
   }
+  if (command === 'inspect' && note !== undefined) {
+    console.error('note: --note has no effect on `inspect` (read-only)');
+  }
 
   let items;
   if (command === 'inspect') {
     items = paths.map(inspectOne);
   } else {
     items = [];
-    for (const p of paths) items.push(await applyOne(p, { go: !!values.go, yes: !!values.yes }));
+    for (const p of paths) items.push(await applyOne(p, { go: !!values.go, yes: !!values.yes, note }));
   }
 
   const effect = effectFor(command, !!values.go);
@@ -430,7 +458,7 @@ async function main() {
 }
 
 export {
-  verdict, inspectOne, applyOne, promptYesNo, nextAction,
+  verdict, inspectOne, applyOne, promptYesNo, nextAction, requireValue,
   MUTATING_COMMANDS, AUTO_RUN_COMMANDS, EXTRA_OVERRIDE_FLAGS, GO_ALIASES,
   glyph, briefLine, jsonItem, summarize, exitCodeFor, effectFor,
   nextStep, rerunArgv, defaultNextAction, assertSafeNext, nextLine, report,

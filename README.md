@@ -333,6 +333,9 @@ node bin/new-tool.mjs my-widget --dir ~/projects
 
 # or, once published, without installing
 npx mjs-tool-skeleton my-widget
+
+# naming the author yourself
+node bin/new-tool.mjs my-widget --author "Ada Lovelace <ada@example.org>"
 ```
 
 It creates `<dir>/my-widget/` containing:
@@ -340,11 +343,32 @@ It creates `<dir>/my-widget/` containing:
 ```
 my-widget.mjs                 the tool (skeleton, name substituted, +x)
 test/my-widget.test.mjs       the test suite (locator rewritten for the layout)
-package.json                  name, bin, type module, engines, MIT, author
-README.md                     a stub to fill in
+package.json                  name, bin, type module, engines, MIT, author (yours)
+README.md                     a stub to fill in, its licence line in your name
 CLAUDE.md                     the agent-facing usage block, ready to keep
-LICENSE                       MIT © Danniel T. Gaidula
+LICENSE                       the skeleton’s own MIT notice, unchanged
 ```
+
+**Whose name goes on a scaffold.** The `author` in the new `package.json` and
+the name on the README’s `MIT ©` line are yours, never the skeleton’s. They
+come from, in order:
+
+1. `--author "<Name> <email>"`, both parts required, on one line;
+2. npm’s `init-author-name` and `init-author-email`, which you set once with
+   `npm config set init-author-name "Ada Lovelace"` and
+   `npm config set init-author-email ada@example.org`;
+3. git’s `user.name` and `user.email`, in which case `new-tool` prints a
+   one-line `note:` on stderr saying so, because a git identity is often a
+   different name or email from the one you publish under;
+4. otherwise the placeholder `TODO: Your Name <you@example.com>` (and
+   `MIT © TODO: Your Name`), which is plainly unfinished and easy to grep for.
+
+A source counts when it gives a name; an email beside it is optional there,
+though `--author` insists on one. A lookup that fails or takes more than a few
+seconds counts as unset, and a bad `--author` is a usage error (exit `2`,
+nothing written). The copied `LICENSE` is the one thing that keeps the
+skeleton’s copyright notice, because the MIT licence requires it to travel with
+the code; add your own line above it if you wish.
 
 Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the ten
 spots: the cheat card (`CHEAT`, printed by `--cheat`), the environment check, which targets need confirmation, the `inspect`
@@ -353,6 +377,15 @@ which of them may go on to `--go` unattended (`AUTO_RUN_COMMANDS`), the
 tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go`
 (`GO_ALIASES`), and the next-action policy (`nextAction()`). Leave the
 runtime fence alone.
+
+**Flags that take a value.** The template carries `requireValue(flag, value, {
+multiline })` in the tool body, above the fence, so it is yours to keep and the
+fence stays byte-identical. A flag’s value that is missing, blank after
+trimming, or (unless `multiline`) holds a line break is a usage error naming
+the flag: exit `2`, stdout empty, before any work. Otherwise you get the trimmed
+value back. `main()` runs the placeholder `--note <text>` of `apply` through
+it; run each flag of your own that takes a value the same way, from `main()`
+(never at module top level, where the runtime’s names do not exist yet).
 
 **Which parser.** Keep the template’s `parseArgs` (no dependency) unless the
 tool will have several commands each with its own flags, options with a fixed
@@ -424,6 +457,9 @@ scaffolded tool. It locks the contract:
 
 - `--help` prints the header, not code.
 
+- a flag’s value goes through `requireValue()`: a missing, blank or multi-line
+  `--note` is exit `2` with stdout empty and nothing touched, even under `--go`.
+
 - `--cheat` prints a tldr-format card (title, `>` block, 3 to 6 example pairs)
   and nothing else, exits `0`, and is a usage error beside `--brief`, `--json`
   or `--quiet`; `--help` and `--version` take precedence over it; a validator
@@ -431,7 +467,8 @@ scaffolded tool. It locks the contract:
 
 - a **symlinked invocation still runs `main()`** — the entry guard in the fence.
 
-`test/new-tool.test.mjs` covers the scaffolder, and three repo-level checks:
+`test/new-tool.test.mjs` covers the scaffolder (the author sources run against
+a temporary home, with no real npm or git config in reach), and three repo-level checks:
 the runtime fence is byte-identical in `skeleton/tool.mjs` and
 `bin/new-tool.mjs`; the human lines and the summary lines
 are byte-identical to 0.1.0, and the brief item lines follow the v3 rule, for

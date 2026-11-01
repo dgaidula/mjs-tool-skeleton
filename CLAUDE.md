@@ -186,13 +186,41 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     shape is a change to every adopted tool’s card. The adoption steps are
     ADOPTING.md §8.
 
+## Flag values: `requireValue()`
+
+`skeleton/tool.mjs` carries `requireValue(flag, value, { multiline = false })`
+in the tool body, above the fence (so it is not part of any adopter’s fence
+hash), and `bin/new-tool.mjs` carries a character-for-character copy, which a
+test holds identical. A missing, blank (after trim) or, unless `multiline`,
+line-broken value calls the fence’s `usageError()`; otherwise the trimmed value
+returns. It is called from `main()`, never at module top level (invariant 8: a
+top-level use of a fence name exits 1 before the fence runs). The template’s
+`apply --note <text>` is its worked use, and the scaffolder’s `--author` runs
+through it.
+
+## The author on a scaffold
+
+`new-tool` writes the *user’s* author into a scaffold’s `package.json` and
+README licence line, never this repo’s owner: `--author "<Name> <email>"`, else
+npm’s `init-author-name`/`init-author-email`, else git’s `user.name`/`user.email`
+(with a `note:` on stderr), else the placeholder `TODO: Your Name`. The lookups
+use `execFile` (no shell), a 5 s timeout and `GIT_TERMINAL_PROMPT=0`; a failure
+or timeout is “unset”. They run only after the target is known to be free. The
+copied `LICENSE` keeps the skeleton’s own notice (MIT requires it). Tests give
+every scaffolder run a temporary `HOME`, `NPM_CONFIG_USERCONFIG`,
+`GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM=1` and drop the outer
+`npm_config_*`/`GIT_*` variables: a real `~/.npmrc` can hold credentials and is
+never read. Keep that isolation in any new scaffolder test.
+
 ## The `<tool>` placeholder and substitution
 
 The skeleton’s **runtime** name comes from its own filename
 (`basename(realpath) - '.mjs'`), so a copied/renamed file reports the right
 name with no edit. Only the **header comment** (which doubles as `--help`) and the
 `CHEAT` card use the literal placeholder `<tool>` for the command name. `new-tool` does exactly
-two substitutions when it copies the template:
+two substitutions when it copies the template (the author is separate: it is
+written into the generated `package.json` and README, which are templates in
+`bin/new-tool.mjs`, not copies):
 
 - in `<name>.mjs`: `<tool>` → the tool name, everywhere in the file: the
   header and the `CHEAT` card (there is no other `<tool>` in the code, and

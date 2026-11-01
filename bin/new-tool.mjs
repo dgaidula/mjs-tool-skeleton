@@ -14,13 +14,24 @@
 // contract's dry-run gate.
 //
 // Usage:
-//   new-tool <name> [--dir <path>]
+//   new-tool <name> [--dir <path>] [--author "<Name> <email>"]
 //   new-tool <name> --brief
 //   new-tool --help | --version | --cheat
 //
 // <name> must be a lowercase package name: a letter, then letters, digits, or
 // hyphens (e.g. my-widget). --dir is where the <name>/ folder is created
 // (default: the current directory).
+//
+// The author written into the new tool's package.json and README licence line
+// is yours, never the skeleton's. It comes from, in order:
+//   1. --author "<Name> <email>" (both required, on one line);
+//   2. npm's init-author-name and init-author-email (set them once with
+//      `npm config set init-author-name "<Name>"` and the same for -email);
+//   3. git's user.name and user.email, with a `note:` on stderr saying so;
+//   4. the placeholder "TODO: Your Name <you@example.com>", to fill in.
+// A source counts when it gives a name. The copied LICENSE file keeps the
+// skeleton's own copyright notice: the MIT licence requires it to travel with
+// the code.
 //
 // --cheat prints a short card of common invocations in tldr page format (the
 // CHEAT constant below) and exits 0, printing nothing else. It cannot be
@@ -43,7 +54,10 @@ import {
 import {
   dirname, join, resolve, relative,
 } from 'node:path';
-import { parseArgs } from 'node:util';
+import { execFile } from 'node:child_process';
+import { parseArgs, promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/;
 
@@ -62,6 +76,10 @@ const CHEAT = `# new-tool
 
 \`new-tool {{tool-name}} --dir {{path/to/directory}}\`
 
+- Create a new tool with an explicit author for its package.json and README:
+
+\`new-tool {{tool-name}} --author "{{Your Name <you@example.com>}}"\`
+
 - Create a new tool and print one line per file created:
 
 \`new-tool {{tool-name}} --brief\`
@@ -72,7 +90,12 @@ const CHEAT = `# new-tool
 
 // ---- generated-file templates ----------------------------------------------
 
-function pkgJson(name) {
+// The author line and licence name for a scaffold with no author found: obviously
+// unfinished, and greppable.
+const PLACEHOLDER_NAME = 'TODO: Your Name';
+const PLACEHOLDER_AUTHOR = { name: PLACEHOLDER_NAME, email: 'you@example.com', line: `${PLACEHOLDER_NAME} <you@example.com>`, source: 'placeholder' };
+
+function pkgJson(name, author) {
   return `${JSON.stringify({
     name,
     version: '0.1.0',
@@ -83,12 +106,12 @@ function pkgJson(name) {
     engines: { node: '>=24' },
     scripts: { test: 'node --test' },
     keywords: [],
-    author: 'Danniel T. Gaidula <dan@iceboxind.com>',
+    author: author.line,
     license: 'MIT',
   }, null, 2)}\n`;
 }
 
-function readmeMd(name) {
+function readmeMd(name, author) {
   return `# ${name}
 
 TODO: one-line description of what ${name} does.
@@ -147,7 +170,7 @@ work goes.
 
 ## License
 
-MIT © Danniel T. Gaidula
+MIT © ${author.name}
 `;
 }
 
@@ -234,6 +257,70 @@ function nextAction(run) {
   return defaultNextAction(run);
 }
 
+// ---- the author --------------------------------------------------------------
+
+// A flag's value, checked before any work (the same helper the template's tool
+// body carries; a test holds the two copies identical). Missing, blank after
+// trim, or (unless multiline) holding a line break: a usage error naming the
+// flag, exit 2, stdout empty. Returns the trimmed value. Call it at run time,
+// never at module top level: the names it uses live in the runtime block below.
+function requireValue(flag, value, { multiline = false } = {}) {
+  if (typeof value !== 'string') usageError(`${flag} needs a value`);
+  if (!value.trim()) usageError(`${flag} must not be blank`);
+  if (!multiline && /[\r\n]/.test(value)) usageError(`${flag} must be one line, with no line break`);
+  return value.trim();
+}
+
+// A name and an optional email as one author, or null when there is no usable
+// name. Every source is held to the one-line rule, and a name with an angle
+// bracket would not parse back out of "Name <email>".
+function authorOf(name, email, source) {
+  const n = String(name ?? '').trim();
+  const e = String(email ?? '').trim();
+  const oneLine = (t) => !/[\r\n<>]/.test(t);
+  if (!n || !oneLine(n) || !oneLine(e)) return null;
+  return { name: n, email: e, line: e ? `${n} <${e}>` : n, source };
+}
+
+// --author "<Name> <email>": both parts are required, so a half-filled author
+// never reaches a package.json. Anything else is a usage error naming the flag.
+function authorFromFlag(value) {
+  const text = requireValue('--author', value);
+  const m = /^([^<>]+?)\s*<([^<>\s]+@[^<>\s]+)>$/.exec(text);
+  if (!m) usageError('--author needs a name and an email, as "<Name> <email>" (for example "Ada Lovelace <ada@example.com>")');
+  return authorOf(m[1], m[2], 'flag');
+}
+
+// One config value, or '' when the tool is missing, the key is unset, the call
+// fails, or it takes more than a few seconds. execFile, so no shell; git never
+// stops to ask a question.
+async function lookup(cmd, args) {
+  try {
+    const { stdout } = await execFileAsync(cmd, args, {
+      timeout: 5000, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+// The flag's author if given, else npm's init-author-*, else git's user.*, else
+// the placeholder.
+async function resolveAuthor(fromFlag) {
+  if (fromFlag) return fromFlag;
+  const sources = [
+    ['npm', 'npm', ['config', 'get', 'init-author-name'], ['config', 'get', 'init-author-email']],
+    ['git', 'git', ['config', 'user.name'], ['config', 'user.email']],
+  ];
+  for (const [source, cmd, nameArgs, emailArgs] of sources) {
+    const [name, email] = await Promise.all([lookup(cmd, nameArgs), lookup(cmd, emailArgs)]);
+    const found = authorOf(name, email, source);
+    if (found) return found;
+  }
+  return PLACEHOLDER_AUTHOR;
+}
+
 // ---- CLI --------------------------------------------------------------------
 
 async function main() {
@@ -247,6 +334,7 @@ async function main() {
         version: { type: 'boolean' },
         cheat: { type: 'boolean' },
         dir: { type: 'string' },
+        author: { type: 'string' },
         brief: { type: 'boolean' },
         json: { type: 'boolean' },
         quiet: { type: 'boolean' },
@@ -275,6 +363,9 @@ async function main() {
   if (!NAME_RE.test(name)) {
     usageError(`invalid name \`${name}\` (use a lowercase letter, then letters/digits/hyphens, e.g. my-widget)`);
   }
+
+  // Check the author flag before any work; the lookups wait until the target is known to be free.
+  const fromFlag = values.author === undefined ? null : authorFromFlag(values.author);
 
   // Load the templates that ship with this package.
   const repoRoot = dirname(dirname(SCRIPT_PATH)); // bin/ -> repo root
@@ -318,14 +409,19 @@ async function main() {
     }]);
   }
 
+  const author = await resolveAuthor(fromFlag);
+  if (author.source === 'git') {
+    console.error(`note: author taken from git config (${printable(author.line)}); to use another, pass --author or set npm's init-author-name and init-author-email`);
+  }
+
   // Build the substituted file set.
   const toolSrc = toolTpl.split('<tool>').join(name);
   const testSrc = testTpl.split("new URL('./tool.mjs', import.meta.url)").join(`new URL('../${name}.mjs', import.meta.url)`);
   const files = [
     { rel: `${name}.mjs`, content: toolSrc, exec: true },
     { rel: join('test', `${name}.test.mjs`), content: testSrc },
-    { rel: 'package.json', content: pkgJson(name) },
-    { rel: 'README.md', content: readmeMd(name) },
+    { rel: 'package.json', content: pkgJson(name, author) },
+    { rel: 'README.md', content: readmeMd(name, author) },
     { rel: 'CLAUDE.md', content: claudeMd(name, agentBlockFor(name, agentUsage)) },
     { rel: 'LICENSE', content: licenseTpl },
   ];
