@@ -271,6 +271,14 @@ on it before you touch it.
   fact rather than trusting it: a live pid in a lock file is not proof that
   the owner is your process.
 
+- **`requireValue()` lives in the template body, above the fence** (skeleton
+  0.4.1), so the fence and its pinned sha256 did not change and no re-sync is
+  needed. An adopted tool that wants it copies the function from
+  `skeleton/tool.mjs` into its own code above the fence, and calls it from
+  `main()` for each flag that takes a value, never at module top level (it
+  calls the fence’s `usageError()`, which is not yet defined while the module
+  loads).
+
 ## 3. Verdicts: one meaning each
 
 Choose each item’s verdict by what the tool **did or will do** with it, not

@@ -39,6 +39,10 @@ tool inspect <path>...            # read-only: report each item
 tool apply   <path>... [--go]     # mutating: dry run, then --go to act
 ```
 
+`apply` also takes a placeholder `--note <text>`, which stands for any flag
+that takes a value (it runs through `requireValue()`; see “Flags that take a
+value” below). Replace it with your own flags, or remove it.
+
 **Four output modes, one item list:**
 
 | mode | shape |
@@ -364,18 +368,21 @@ come from, in order:
    `MIT © TODO: Your Name`), which is plainly unfinished and easy to grep for.
 
 A source counts when it gives a name; an email beside it is optional there,
-though `--author` insists on one. A lookup that fails or takes more than a few
+though `--author` insists on one. A config source whose name or email holds a
+line break or an angle bracket is skipped, with a `note:` on stderr naming the
+key. A lookup that fails or takes more than a few
 seconds counts as unset, and a bad `--author` is a usage error (exit `2`,
 nothing written). The copied `LICENSE` is the one thing that keeps the
 skeleton’s copyright notice, because the MIT licence requires it to travel with
 the code; add your own line above it if you wish.
 
-Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the ten
+Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the eleven
 spots: the cheat card (`CHEAT`, printed by `--cheat`), the environment check, which targets need confirmation, the `inspect`
 report, the `apply` mutation, which commands mutate (`MUTATING_COMMANDS`),
 which of them may go on to `--go` unattended (`AUTO_RUN_COMMANDS`), the
 tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go`
-(`GO_ALIASES`), and the next-action policy (`nextAction()`). Leave the
+(`GO_ALIASES`), the next-action policy (`nextAction()`), and the flags that
+take a value (`requireValue()`, with `--note` as the placeholder). Leave the
 runtime fence alone.
 
 **Flags that take a value.** The template carries `requireValue(flag, value, {
@@ -654,6 +661,22 @@ first, treat any non-`ok` line as a finding, dry-run before `--go`, check the
 exit code (exit `0` does not mean go), and loop on `next` — obey `run` and
 `wait` within a budget, halt on anything else. A runbook may halt the agent
 where `next` says `run`; only a person carries it past `ask` or `stop`.
+
+## Known limits
+
+- **The author lookups run where you run `new-tool`.** npm and git read their
+  config from the current directory, so a repo-local git identity or a project
+  `.npmrc` there decides the author ahead of your own settings.
+- **The one-line rule checks CR and LF only.** An author value holding
+  U+2028, U+2029, U+0085 or another control character passes.
+- **A timed-out lookup can leave a process running.** When `npm` or `git` on
+  `PATH` is a shell wrapper that does not `exec` the real program, the timeout
+  stops the wrapper, and its child may run on.
+- **`--author` takes `Name <email>` only.** npm’s `Name <email> (url)` form is
+  refused, `init-author-url` is ignored, and a repeated `--author` keeps the
+  last.
+- **No `note:` when the placeholder is used.** A scaffold whose author is
+  `TODO: Your Name` says nothing on stderr; grep for it.
 
 ## Requirements
 

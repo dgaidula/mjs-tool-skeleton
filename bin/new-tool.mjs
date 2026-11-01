@@ -29,7 +29,9 @@
 //      `npm config set init-author-name "<Name>"` and the same for -email);
 //   3. git's user.name and user.email, with a `note:` on stderr saying so;
 //   4. the placeholder "TODO: Your Name <you@example.com>", to fill in.
-// A source counts when it gives a name. The copied LICENSE file keeps the
+// A source counts when it gives a name; a config source whose name or email
+// holds a line break or an angle bracket is skipped, with a `note:` on stderr
+// saying which. The copied LICENSE file keeps the
 // skeleton's own copyright notice: the MIT licence requires it to travel with
 // the code.
 //
@@ -44,7 +46,8 @@
 // Exit codes:
 //   0   scaffolded ok.
 //   1   refused (the target directory already exists) or a write failed.
-//   2   usage error (missing/invalid name, unknown flag, bad mode combo).
+//   2   usage error (missing/invalid name, a bad --author, unknown flag, bad
+//       mode combo).
 //   3   could not run to completion (the skeleton templates could not be
 //       read, or an internal error).
 
@@ -186,12 +189,13 @@ ${agentBlock}
 
 ## Filling in the tool
 
-Search \`${name}.mjs\` for \`TODO(tool):\` — those are the ten spots where
+Search \`${name}.mjs\` for \`TODO(tool):\` — those are the eleven spots where
 this tool’s real work goes: the cheat card (\`--cheat\`), the environment
 check, which targets need confirmation, the read-only \`inspect\` report, the
 \`apply\` mutation, which commands mutate, which of them may go on to \`--go\`
-unattended, the tool’s own override flags, its aliases of \`--go\`, and the
-next-action policy.
+unattended, the tool’s own override flags, its aliases of \`--go\`, the
+next-action policy, and the flags that take a value (\`requireValue()\`; the
+template’s \`--note\` is a placeholder to replace or remove).
 Keep the \`report()\` / \`verdict()\` / \`nextAction()\` shape intact: rendering
 every mode from one set of item objects is what guarantees the human,
 \`--brief\`, and \`--json\` outputs can never disagree.
@@ -306,15 +310,22 @@ async function lookup(cmd, args) {
 }
 
 // The flag's author if given, else npm's init-author-*, else git's user.*, else
-// the placeholder.
+// the placeholder. npm runs with --logs-max=0, so it writes no debug log under
+// ~/.npm/_logs: a scaffold writes nothing but its own directory. A source whose
+// name or email breaks the one-line, no-angle-bracket rule is skipped with a note.
 async function resolveAuthor(fromFlag) {
   if (fromFlag) return fromFlag;
   const sources = [
-    ['npm', 'npm', ['config', 'get', 'init-author-name'], ['config', 'get', 'init-author-email']],
-    ['git', 'git', ['config', 'user.name'], ['config', 'user.email']],
+    ['npm', 'npm', (key) => ['config', 'get', key, '--logs-max=0'], 'init-author-name', 'init-author-email'],
+    ['git', 'git', (key) => ['config', key], 'user.name', 'user.email'],
   ];
-  for (const [source, cmd, nameArgs, emailArgs] of sources) {
-    const [name, email] = await Promise.all([lookup(cmd, nameArgs), lookup(cmd, emailArgs)]);
+  for (const [source, cmd, argsFor, nameKey, emailKey] of sources) {
+    const [name, email] = await Promise.all([lookup(cmd, argsFor(nameKey)), lookup(cmd, argsFor(emailKey))]);
+    const bad = name && [[nameKey, name], [emailKey, email]].find(([, v]) => /[\r\n<>]/.test(v));
+    if (bad) {
+      console.error(`note: author in ${source} config skipped: ${bad[0]} holds ${/[\r\n]/.test(bad[1]) ? 'a line break' : 'an angle bracket'} (an author is one line, with no < or > in the name or email)`);
+      continue;
+    }
     const found = authorOf(name, email, source);
     if (found) return found;
   }

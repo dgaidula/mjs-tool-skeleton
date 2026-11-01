@@ -189,6 +189,14 @@ test('--note is checked before any work: a bad value is exit 2 with stdout empty
     assert.equal(JSON.parse(ok.stdout).items[0].data.note, 'fixed up'); // trimmed
     // and the advice keeps the flag: the next --go is the same command with --go added
     assert.ok(JSON.parse(ok.stdout).next.argv.includes('--note'));
+
+    const without = run(['apply', f, '--json']);
+    assert.equal(without.status, 0);
+    assert.ok(!('note' in JSON.parse(without.stdout).items[0].data)); // no --note, no note key
+
+    const inspect = run(['inspect', f, '--note', 'hi']);
+    assert.equal(inspect.status, 0);
+    assert.match(inspect.stderr, /^note: --note has no effect on `inspect` \(read-only\)$/m);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

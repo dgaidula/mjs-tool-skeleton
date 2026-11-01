@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import {
   mkdtempSync, existsSync, writeFileSync, readFileSync, rmSync, statSync, mkdirSync, chmodSync, readdirSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,13 +18,16 @@ const SKELETON = fileURLToPath(new URL('../skeleton/tool.mjs', import.meta.url))
 // into the expected output), so every run gets a home of its own: empty unless
 // the test writes a config into it. The files are written directly, not through
 // npm or git, and every npm_config_* and GIT_* variable of the outer environment
-// is dropped (npm test sets some).
-function isolatedEnv(home, { npm = {}, git = {} } = {}) {
+// (`base`) is dropped (npm test sets some). The runs start in the home, and its
+// package.json and GIT_CEILING_DIRECTORIES stop npm and git walking up out of it,
+// so a temp dir inside a checkout or a project finds no repo identity or .npmrc.
+function isolatedEnv(home, { npm = {}, git = {}, base = process.env } = {}) {
   mkdirSync(home, { recursive: true });
+  writeFileSync(path.join(home, 'package.json'), '{}\n');
   writeFileSync(path.join(home, 'npmrc'), Object.entries(npm).map(([k, v]) => `${k}=${v}\n`).join(''));
   writeFileSync(path.join(home, 'gitconfig'), Object.keys(git).length
     ? `[user]\n${Object.entries(git).map(([k, v]) => `\t${k} = ${v}\n`).join('')}` : '');
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GIT_)/i.test(k)));
+  const env = Object.fromEntries(Object.entries(base).filter(([k]) => !/^(npm_config_|GIT_)/i.test(k)));
   return {
     ...env,
     HOME: home,
@@ -32,6 +36,7 @@ function isolatedEnv(home, { npm = {}, git = {} } = {}) {
     NPM_CONFIG_GLOBALCONFIG: path.join(home, 'globalrc'),
     GIT_CONFIG_GLOBAL: path.join(home, 'gitconfig'),
     GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CEILING_DIRECTORIES: path.dirname(home),
   };
 }
 
@@ -205,17 +210,18 @@ test('usage errors exit 2', () => {
 // ---- the author (D583): the flag, else npm, else git, else a placeholder --------------------
 
 // Scaffold `my-widget` with the given config and return what a user would see.
-function scaffold({ npm, git, args = [], env } = {}) {
+function scaffold({ npm, git, args = [], env, base } = {}) {
   const dir = tmp();
   const home = path.join(dir, 'home');
   const out = path.join(dir, 'out');
   try {
-    const r = run(['my-widget', '--dir', out, '--json', ...args], { cwd: home, env: env ?? isolatedEnv(home, { npm, git }) });
+    const r = run(['my-widget', '--dir', out, '--json', ...args], { cwd: home, env: env ?? isolatedEnv(home, { npm, git, base }) });
     const root = path.join(out, 'my-widget');
     const made = existsSync(root);
     return {
       r,
       made,
+      npmLogs: existsSync(path.join(home, '.npm', '_logs')),
       pkg: made ? JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) : null,
       readme: made ? readFileSync(path.join(root, 'README.md'), 'utf8') : null,
       files: made ? Object.fromEntries(['my-widget.mjs', 'README.md', 'CLAUDE.md', 'package.json', 'LICENSE', path.join('test', 'my-widget.test.mjs')]
@@ -269,6 +275,43 @@ test('author: with none configured, a greppable placeholder stands in, and the r
   }
 });
 
+test('author: the lookups write nothing outside the new directory (npm leaves no debug log)', () => {
+  const s = scaffold(); // the placeholder case: both npm lookups run
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.npmLogs, false, 'npm wrote ~/.npm/_logs');
+});
+
+test('author: the outer npm_config_* and GIT_* variables never reach the lookups, in any case', () => {
+  const dir = tmp();
+  try {
+    const baitrc = path.join(dir, 'baitrc');
+    writeFileSync(baitrc, 'init-author-name=Bait Userconfig\n');
+    const s = scaffold({
+      base: {
+        ...process.env,
+        npm_config_init_author_name: 'Bait Lower',
+        NPM_CONFIG_INIT_AUTHOR_NAME: 'Bait Upper',
+        npm_config_userconfig: baitrc,
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'user.name',
+        GIT_CONFIG_VALUE_0: 'Bait Git',
+      },
+    });
+    assert.equal(s.r.status, 0, s.r.stderr);
+    assert.equal(s.pkg.author, 'TODO: Your Name <you@example.com>');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('author: a config value with an angle bracket is skipped for the next source, with a note naming it', () => {
+  const s = scaffold({ git: { name: 'Ada <x>', email: 'ada@example.org' } });
+  assert.equal(s.r.status, 0, s.r.stderr);
+  assert.equal(s.pkg.author, 'TODO: Your Name <you@example.com>');
+  assert.match(s.r.stderr, /^note: author in git config skipped: user\.name holds an angle bracket /);
+  assert.equal(s.r.stderr.trim().split('\n').length, 1);
+});
+
 test('author: a source with a name and no email gives a name-only author; one with no name is skipped', () => {
   const nameOnly = scaffold({ npm: { 'init-author-name': 'Solo Person' }, git: GIT });
   assert.equal(nameOnly.pkg.author, 'Solo Person');
@@ -289,6 +332,29 @@ test('author: --author fails fast (exit 2, stdout empty, one message naming the 
   assert.equal(missing.r.status, 2);
   assert.equal(missing.r.stdout, '');
   assert.match(missing.r.stderr, /--author/);
+});
+
+test('author: --author refuses a second address, a bare word, an angle bracket in the name and a space in the email', () => {
+  for (const value of ['Ada <x> Bob <bob@x.org>', 'Ada <ada>', 'Ada > Lovelace <ada@example.org>', 'Ada < Lovelace <ada@example.org>',
+    'Ada <ada lovelace@example.org>', 'Ada <ada@example .org>']) {
+    const s = scaffold({ npm: NPM, args: ['--author', value] });
+    assert.equal(s.r.status, 2, JSON.stringify(value));
+    assert.match(s.r.stderr, /^error: --author /, JSON.stringify(value));
+    assert.equal(s.made, false, JSON.stringify(value));
+  }
+});
+
+test('author: a bad --author is a usage error even when the target exists (checked before the refusal)', () => {
+  const dir = tmp();
+  try {
+    mkdirSync(path.join(dir, 'my-widget'));
+    const r = run(['my-widget', '--dir', dir, '--author', 'Ada']);
+    assert.equal(r.status, 2);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /^error: --author /);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('author: a refusal (target exists) does not look the author up', () => {
@@ -312,7 +378,9 @@ test('author: a refusal (target exists) does not look the author up', () => {
   }
 });
 
-test('author: a lookup that fails or times out counts as unset; git is asked without a shell, never to prompt', { timeout: 20000 }, () => {
+// The 5 s lookup timeout is pinned by the clock: npm hangs for 60 s here. (Not
+// a check for a shell: `sh -c` execs a lone command, so the stub cannot tell.)
+test('author: a lookup that fails or times out (within the 5 s limit) counts as unset; git is asked for user.name and user.email, never to prompt', { timeout: 20000 }, () => {
   const dir = tmp();
   try {
     const bin = path.join(dir, 'bin');
@@ -323,9 +391,11 @@ test('author: a lookup that fails or times out counts as unset; git is asked wit
     writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "prompt=$GIT_TERMINAL_PROMPT args=$*" >> '${log}'\nexit 1\n`);
     for (const tool of ['npm', 'git']) chmodSync(path.join(bin, tool), 0o755);
     const out = path.join(dir, 'out');
+    const started = Date.now();
     const r = spawnSync(process.execPath, [NEW_TOOL, 'my-widget', '--dir', out, '--json'], {
       encoding: 'utf8', timeout: 30000, cwd: BASE_HOME, env: { ...BASE_ENV, PATH: `${bin}:${BASE_ENV.PATH}` },
     });
+    assert.ok(Date.now() - started < 10000, `took ${Date.now() - started} ms; the lookup timeout is 5 s`);
     assert.equal(r.status, 0, r.stderr);
     assert.equal(JSON.parse(readFileSync(path.join(out, 'my-widget', 'package.json'), 'utf8')).author, 'TODO: Your Name <you@example.com>');
     const asked = readFileSync(log, 'utf8').trim().split('\n').sort();
@@ -363,6 +433,16 @@ test('the runtime fence is byte-identical in the skeleton and the scaffolder', (
   // Only the two marker lines carry the marker text, so a scanner finds one fence per file.
   for (const file of [NEW_TOOL, SKELETON]) {
     assert.equal(readFileSync(file, 'utf8').split('mjs-tool runtime v').length, 3, file);
+  }
+});
+
+// Adopted tools pin this hash (the block, both marker lines included, no trailing newline).
+const FENCE_SHA256 = 'caf3bd4cb6f99432ea87c80884c86ec6fec7023ad6ef06423aeda27f837b22df';
+
+test('the runtime fence hashes to the pinned sha256 in both files', () => {
+  for (const file of [NEW_TOOL, SKELETON]) {
+    assert.equal(createHash('sha256').update(fenceOf(file)).digest('hex'), FENCE_SHA256,
+      `${file}: the fence changed, so every adopted tool's pinned hash goes stale: ship it as a runtime revision (adopters re-sync by ADOPTING.md §10) and only then update FENCE_SHA256`);
   }
 });
 
