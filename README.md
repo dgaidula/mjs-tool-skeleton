@@ -376,8 +376,11 @@ or a repo’s own `user.name` where you run it never decides the author.
 A source counts when it gives a name; an email beside it is optional there,
 though `--author` insists on one. A config source whose name or email holds a
 line break (CR, LF, U+2028, U+2029 or U+0085), another control character, a
-bidi control or mark, or an angle bracket is skipped, with a `note:` on stderr naming the
-key. A lookup that fails or takes more than a few
+bidi control or one of the bidi marks U+200E, U+200F and U+061C, or an angle
+bracket is skipped, with a `note:` on stderr naming the key. npm prints DEL
+and the C1 controls as caret text (`^?`, and `^@` to `^_`) on every output
+path, so npm’s values are checked through that text: one holding it is
+skipped the same way, with a `note:` saying so. A lookup that fails or takes more than a few
 seconds counts as unset, and a bad `--author` is a usage error (exit `2`,
 nothing written). The copied `LICENSE` is the one thing that keeps the
 skeleton’s copyright notice, because the MIT licence requires it to travel with
@@ -684,12 +687,17 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
   still creates an empty `~/.npm`. Pass `--author` to skip the lookups.
 - **No `note:` when the placeholder is used.** A scaffold whose author is
   `TODO: Your Name` says nothing on stderr; grep for it.
-- **npm shows DEL and C1 controls as caret text.** npm prints DEL, the C1
+- **A caret in an npm author can be refused.** npm prints DEL, the C1
   controls and U+0085 in its settings as `^?`, `^[`, `^E` and the like on every
-  output path, `npm config list --json` included, so an `init-author-name`
-  holding one lands in a scaffold as that text, with no `note:`. (A C0 control
-  such as ESC is caught: the JSON keeps it.) Pass `--author`, or use git’s
-  `user.name`.
+  output path, `npm config list --json` included, so `new-tool` cannot tell
+  that text from the character and skips any npm name or email holding `^?`
+  or `^@` to `^_`, with a `note:`. A real name with such a literal pair (say
+  `Ada^ELovelace`) is refused with it. Pass `--author`, or use git’s
+  `user.name`; a `^` before any other character passes.
+- **npm hides a value it would redact.** `npm config list --json` leaves out
+  any key whose value npm’s `redact()` changes (a UUID-shaped string, an
+  `npm_` token, a URL with a password), so an `init-author-name` or
+  `init-author-email` like that reads as unset, with no `note:`.
 - **A missing home folder hides every config author.** The lookups run in your
   home folder, so when `HOME` names a directory that does not exist each one
   fails and counts as unset, and even a `GIT_CONFIG_GLOBAL` identity is passed

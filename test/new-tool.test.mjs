@@ -410,6 +410,10 @@ test('author: a config value with a line break or a control character is skipped
 
 // `npm config get` prints a C0 control as caret text (Ada^[Lovelace), which
 // would pass the check; `npm config list --json` keeps the real character.
+// The ESC, ESC-sequence and SOH cases guard that JSON read: through `config
+// get` they would arrive as caret text and get the caret note, not this one.
+// The quoted U+2028 case only pins the JSON path's behaviour: `config get`
+// prints that character raw too, so it would be caught either way.
 test('author: an npm value with a C0 control or a quoted U+2028 is skipped, with a note saying which (R3-1)', () => {
   for (const [name, what] of [
     ['Ada\u001bLovelace', 'a control character'],
@@ -424,6 +428,30 @@ test('author: an npm value with a C0 control or a quoted U+2028 is skipped, with
     assert.equal(notes.length, 2, JSON.stringify(name));
     assert.match(notes[0], new RegExp(`^note: author in npm config skipped: init-author-name holds ${what} `), JSON.stringify(name));
   }
+});
+
+// npm prints DEL and the C1 controls as caret text on every output path (DEL
+// as ^?, C1 as ^@ to ^_), the JSON's included, so an npm value holding that
+// text is skipped. git and --author see the real characters, so caret text
+// there is plain text, as is a ^ before any other character in npm.
+test('author: an npm value holding npm\'s caret text for DEL or C1 is skipped, with a note; a plain ^ in npm, and caret text from git or --author, pass (D666)', () => {
+  for (const code of [0x7f, 0x9b, 0x85, 0x80]) {
+    const label = `U+${code.toString(16).padStart(4, '0')}`;
+    const s = scaffold({ npm: { 'init-author-name': `Ada${String.fromCharCode(code)}Lovelace`, 'init-author-email': 'npm@example.com' }, git: GIT });
+    assert.equal(s.r.status, 0, s.r.stderr);
+    assert.equal(s.pkg.author, 'Git Person <git@example.com>', label);
+    const notes = s.r.stderr.trim().split('\n');
+    assert.equal(notes.length, 2, label);
+    assert.match(notes[0], /^note: author in npm config skipped: init-author-name holds npm's caret text for a control character \(.*; pass --author\)$/, label);
+  }
+  const plain = scaffold({ npm: { 'init-author-name': 'A^b', 'init-author-email': 'npm@example.com' }, git: GIT });
+  assert.equal(plain.pkg.author, 'A^b <npm@example.com>');
+  assert.equal(plain.r.stderr, '');
+  const git = scaffold({ git: { name: 'Ada^[Lovelace', email: 'git@example.com' } });
+  assert.equal(git.pkg.author, 'Ada^[Lovelace <git@example.com>');
+  const flag = scaffold({ args: ['--author', 'Ada^?Lovelace <ada@example.org>'] });
+  assert.equal(flag.r.status, 0, flag.r.stderr);
+  assert.equal(flag.pkg.author, 'Ada^?Lovelace <ada@example.org>');
 });
 
 test('author: the bidi marks U+200E, U+200F and U+061C are refused in --author and skipped in config, with a note (R3-2)', () => {

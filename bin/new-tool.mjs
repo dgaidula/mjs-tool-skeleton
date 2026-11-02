@@ -35,10 +35,12 @@
 // home folder and git reads only its global config, so a project's .npmrc or
 // a repo's identity where you run new-tool never counts. A source counts when
 // it gives a name; a config source whose name or email holds a line break, a
-// control character or an angle bracket is skipped, with a `note:` on stderr
-// saying which. The copied LICENSE file keeps the
-// skeleton's own copyright notice: the MIT licence requires it to travel with
-// the code.
+// control character, a bidi control or mark (U+200E, U+200F, U+061C) or an
+// angle bracket is skipped, with a `note:` on stderr saying which. npm prints
+// DEL and C1 controls as caret text, so npm's values are checked through it:
+// one holding ^? or ^@ to ^_ is skipped the same way. The copied LICENSE file
+// keeps the skeleton's own copyright notice: the MIT licence requires it to
+// travel with the code.
 //
 // --cheat prints a short card of common invocations in tldr page format (the
 // CHEAT constant below) and exits 0, printing nothing else. It cannot be
@@ -331,7 +333,9 @@ async function lookup(cmd, args) {
 // `npm config list --json`: `npm config get` prints a C0 control as caret text
 // (^[ for ESC), which the check below cannot see, while the JSON keeps it as a
 // \u escape. npm prints DEL and the C1 controls (U+0085 among them) as caret
-// text on every path, the JSON's included (README, Known limits).
+// text on every output path, the JSON's included, so NPM_CARET treats ^? and
+// ^@ to ^_ in an npm value as the control they stand for (README, Known limits).
+const NPM_CARET = /\^[?@-_]/;
 async function npmConfig(keys) {
   try {
     const config = JSON.parse(await lookup('npm', ['config', 'list', '--json', '--logs-max=0']));
@@ -347,7 +351,7 @@ async function npmConfig(keys) {
 // it writes no debug log under ~/.npm/_logs; it may still create an empty
 // ~/.npm in a home where it never ran (README, Known limits). A source whose
 // name or email breaks the one-line, no-control-character, no-angle-bracket
-// rule is skipped with a note.
+// rule, or (npm only) holds npm's caret text, is skipped with a note.
 async function resolveAuthor(fromFlag) {
   if (fromFlag) return fromFlag;
   const sources = [
@@ -356,10 +360,12 @@ async function resolveAuthor(fromFlag) {
   ];
   for (const [source, read, nameKey, emailKey] of sources) {
     const [name, email] = await read([nameKey, emailKey]);
-    const bad = name && [[nameKey, name], [emailKey, email]].find(([, v]) => AUTHOR_CONTROL.test(v) || /[<>]/.test(v));
+    const caret = (v) => source === 'npm' && NPM_CARET.test(v);
+    const bad = name && [[nameKey, name], [emailKey, email]].find(([, v]) => AUTHOR_CONTROL.test(v) || /[<>]/.test(v) || caret(v));
     if (bad) {
-      const what = AUTHOR_LINE_BREAK.test(bad[1]) ? 'a line break' : AUTHOR_CONTROL.test(bad[1]) ? 'a control character' : 'an angle bracket';
-      console.error(`note: author in ${source} config skipped: ${bad[0]} holds ${what} (an author is one line, with no control character and no < or > in the name or email)`);
+      const what = AUTHOR_LINE_BREAK.test(bad[1]) ? 'a line break' : AUTHOR_CONTROL.test(bad[1]) ? 'a control character' : /[<>]/.test(bad[1]) ? 'an angle bracket' : null;
+      const why = what ? 'an author is one line, with no control character and no < or > in the name or email' : 'npm prints DEL and C1 controls as ^? and ^@ to ^_; pass --author';
+      console.error(`note: author in ${source} config skipped: ${bad[0]} holds ${what ?? "npm's caret text for a control character"} (${why})`);
       continue;
     }
     const found = authorOf(name, email, source);

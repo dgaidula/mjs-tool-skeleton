@@ -210,10 +210,14 @@ config sources are “your own user-level settings” (the README’s and
 with `cwd` set to `os.homedir()`, so npm’s project layer cannot apply, and git
 is asked with `git config --global`, so a repo-local identity never counts.
 npm’s other layers still do: its machine-wide `globalconfig`
-(`$PREFIX/etc/npmrc`) and any `npm_config_*` variable in the environment.
+(`$PREFIX/etc/npmrc`), its builtin `$npmPath/npmrc` (the `npmrc` file in npm’s
+own install folder) and any `npm_config_*` variable in the environment.
 npm is read with one `npm config list --json`, not `npm config get`, which
 prints a C0 control as caret text (`^[`); npm prints DEL and C1 as caret text
-on every path (README, Known limits). `--author` refuses a control character
+on every output path (it passes config to child processes raw), so an npm
+value holding `^?` or `^@`–`^_` (`NPM_CARET`) is skipped with its own `note:`,
+and a real name with that literal pair is refused (README, Known limits); git
+and `--author` see real characters and get no caret check. `--author` refuses a control character
 inside the value (C0, TAB included, DEL, C1), a bidi control or a bidi mark
 (U+200E, U+200F, U+061C); a leading or trailing TAB, VT or FF is trimmed like
 a space. A config value holding one is skipped with a `note:`. The lookups
