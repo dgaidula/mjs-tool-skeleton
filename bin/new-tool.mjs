@@ -284,9 +284,10 @@ function requireValue(flag, value, { multiline = false } = {}) {
 
 // An author is one line of plain text: no line break (the same set as
 // requireValue's), and no other character the runtime's printable() escapes
-// (C0 controls, TAB included here, DEL, C1, the bidi controls).
+// (C0 controls, TAB included here, DEL, C1, the bidi controls), nor the three
+// bidi marks printable() leaves alone (U+200E, U+200F, U+061C).
 const AUTHOR_LINE_BREAK = /[\r\n\u2028\u2029\u0085]/;
-const AUTHOR_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+const AUTHOR_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/;
 
 // A name and an optional email as one author, or null when there is no usable
 // name. Every source is held to the one-line, no-control-character rule, and a
@@ -326,6 +327,20 @@ async function lookup(cmd, args) {
   }
 }
 
+// npm's values for the keys, '' for each when unset or the call fails, from one
+// `npm config list --json`: `npm config get` prints a C0 control as caret text
+// (^[ for ESC), which the check below cannot see, while the JSON keeps it as a
+// \u escape. npm prints DEL and the C1 controls (U+0085 among them) as caret
+// text on every path, the JSON's included (README, Known limits).
+async function npmConfig(keys) {
+  try {
+    const config = JSON.parse(await lookup('npm', ['config', 'list', '--json', '--logs-max=0']));
+    return keys.map((key) => (typeof config[key] === 'string' ? config[key].trim() : ''));
+  } catch {
+    return keys.map(() => '');
+  }
+}
+
 // The flag's author if given, else npm's init-author-*, else git's user.*, else
 // the placeholder: only the user's own settings, since npm runs from the home
 // folder and git reads its global config alone. npm runs with --logs-max=0, so
@@ -336,11 +351,11 @@ async function lookup(cmd, args) {
 async function resolveAuthor(fromFlag) {
   if (fromFlag) return fromFlag;
   const sources = [
-    ['npm', 'npm', (key) => ['config', 'get', key, '--logs-max=0'], 'init-author-name', 'init-author-email'],
-    ['git', 'git', (key) => ['config', '--global', key], 'user.name', 'user.email'],
+    ['npm', npmConfig, 'init-author-name', 'init-author-email'],
+    ['git', (keys) => Promise.all(keys.map((key) => lookup('git', ['config', '--global', key]))), 'user.name', 'user.email'],
   ];
-  for (const [source, cmd, argsFor, nameKey, emailKey] of sources) {
-    const [name, email] = await Promise.all([lookup(cmd, argsFor(nameKey)), lookup(cmd, argsFor(emailKey))]);
+  for (const [source, read, nameKey, emailKey] of sources) {
+    const [name, email] = await read([nameKey, emailKey]);
     const bad = name && [[nameKey, name], [emailKey, email]].find(([, v]) => AUTHOR_CONTROL.test(v) || /[<>]/.test(v));
     if (bad) {
       const what = AUTHOR_LINE_BREAK.test(bad[1]) ? 'a line break' : AUTHOR_CONTROL.test(bad[1]) ? 'a control character' : 'an angle bracket';

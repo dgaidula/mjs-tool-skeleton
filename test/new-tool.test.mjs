@@ -408,6 +408,40 @@ test('author: a config value with a line break or a control character is skipped
   assert.match(npm.r.stderr, /^note: author in npm config skipped: init-author-name holds a control character /);
 });
 
+// `npm config get` prints a C0 control as caret text (Ada^[Lovelace), which
+// would pass the check; `npm config list --json` keeps the real character.
+test('author: an npm value with a C0 control or a quoted U+2028 is skipped, with a note saying which (R3-1)', () => {
+  for (const [name, what] of [
+    ['Ada\u001bLovelace', 'a control character'],
+    ['Ada\u001b[31mLovelace', 'a control character'],
+    ['Ada\u0001Lovelace', 'a control character'],
+    ['"Ada\\u2028Lovelace"', 'a line break'], // npm's quoted (JSON) value: a real U+2028
+  ]) {
+    const s = scaffold({ npm: { 'init-author-name': name, 'init-author-email': 'npm@example.com' }, git: GIT });
+    assert.equal(s.r.status, 0, s.r.stderr);
+    assert.equal(s.pkg.author, 'Git Person <git@example.com>', JSON.stringify(name));
+    const notes = s.r.stderr.trim().split('\n');
+    assert.equal(notes.length, 2, JSON.stringify(name));
+    assert.match(notes[0], new RegExp(`^note: author in npm config skipped: init-author-name holds ${what} `), JSON.stringify(name));
+  }
+});
+
+test('author: the bidi marks U+200E, U+200F and U+061C are refused in --author and skipped in config, with a note (R3-2)', () => {
+  for (const mark of ['\u200e', '\u200f', '\u061c']) {
+    const flag = scaffold({ npm: NPM, args: ['--author', `Ada${mark}Lovelace <ada@example.org>`] });
+    assert.equal(flag.r.status, 2, JSON.stringify(mark));
+    assert.equal(flag.r.stdout, '', JSON.stringify(mark));
+    assert.match(flag.r.stderr, /^error: --author must not hold a control character/, JSON.stringify(mark));
+    assert.equal(flag.made, false, JSON.stringify(mark));
+    const git = scaffold({ git: { name: `Ada${mark}Lovelace`, email: 'ada@example.org' } });
+    assert.equal(git.pkg.author, 'TODO: Your Name <you@example.com>', JSON.stringify(mark));
+    assert.match(git.r.stderr, /^note: author in git config skipped: user\.name holds a control character /, JSON.stringify(mark));
+    const npm = scaffold({ npm: { 'init-author-name': 'Ada Lovelace', 'init-author-email': `ada${mark}@example.org` }, git: GIT });
+    assert.equal(npm.pkg.author, 'Git Person <git@example.com>', JSON.stringify(mark));
+    assert.match(npm.r.stderr, /^note: author in npm config skipped: init-author-email holds a control character /, JSON.stringify(mark));
+  }
+});
+
 test('author: a source with a name and no email gives a name-only author; one with no name is skipped', () => {
   const nameOnly = scaffold({ npm: { 'init-author-name': 'Solo Person' }, git: GIT });
   assert.equal(nameOnly.pkg.author, 'Solo Person');

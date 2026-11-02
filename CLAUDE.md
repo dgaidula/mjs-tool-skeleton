@@ -206,11 +206,17 @@ README licence line, never this repo’s owner: `--author "<Name> <email>"`, els
 npm’s `init-author-name`/`init-author-email`, else git’s `user.name`/`user.email`
 (with a `note:` on stderr), else the placeholder `TODO: Your Name`. The two
 config sources are “your own user-level settings” (the README’s and
-`--help`’s words) and nothing else: the lookups run
+`--help`’s words), never a project’s or a repo’s: the lookups run
 with `cwd` set to `os.homedir()`, so npm’s project layer cannot apply, and git
 is asked with `git config --global`, so a repo-local identity never counts.
-`--author` refuses a control character (C0, TAB included, DEL, C1) or a bidi
-control, and a config value holding one is skipped with a `note:`. The lookups
+npm’s other layers still do: its machine-wide `globalconfig`
+(`$PREFIX/etc/npmrc`) and any `npm_config_*` variable in the environment.
+npm is read with one `npm config list --json`, not `npm config get`, which
+prints a C0 control as caret text (`^[`); npm prints DEL and C1 as caret text
+on every path (README, Known limits). `--author` refuses a control character
+inside the value (C0, TAB included, DEL, C1), a bidi control or a bidi mark
+(U+200E, U+200F, U+061C); a leading or trailing TAB, VT or FF is trimmed like
+a space. A config value holding one is skipped with a `note:`. The lookups
 use `execFile` (no shell), a 5 s timeout, `GIT_TERMINAL_PROMPT=0` and
 `NODE_DISABLE_COMPILE_CACHE=1` (npm 11 would otherwise leave a
 `node-compile-cache` under `$TMPDIR`); a failure or timeout is “unset”. They

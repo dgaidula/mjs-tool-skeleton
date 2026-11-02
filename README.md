@@ -375,8 +375,8 @@ your home folder and reads only git’s global config, so a project’s `.npmrc`
 or a repo’s own `user.name` where you run it never decides the author.
 A source counts when it gives a name; an email beside it is optional there,
 though `--author` insists on one. A config source whose name or email holds a
-line break (CR, LF, U+2028, U+2029 or U+0085), another control character or a
-bidi control, or an angle bracket is skipped, with a `note:` on stderr naming the
+line break (CR, LF, U+2028, U+2029 or U+0085), another control character, a
+bidi control or mark, or an angle bracket is skipped, with a `note:` on stderr naming the
 key. A lookup that fails or takes more than a few
 seconds counts as unset, and a bad `--author` is a usage error (exit `2`,
 nothing written). The copied `LICENSE` is the one thing that keeps the
@@ -684,6 +684,16 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
   still creates an empty `~/.npm`. Pass `--author` to skip the lookups.
 - **No `note:` when the placeholder is used.** A scaffold whose author is
   `TODO: Your Name` says nothing on stderr; grep for it.
+- **npm shows DEL and C1 controls as caret text.** npm prints DEL, the C1
+  controls and U+0085 in its settings as `^?`, `^[`, `^E` and the like on every
+  output path, `npm config list --json` included, so an `init-author-name`
+  holding one lands in a scaffold as that text, with no `note:`. (A C0 control
+  such as ESC is caught: the JSON keeps it.) Pass `--author`, or use git’s
+  `user.name`.
+- **A missing home folder hides every config author.** The lookups run in your
+  home folder, so when `HOME` names a directory that does not exist each one
+  fails and counts as unset, and even a `GIT_CONFIG_GLOBAL` identity is passed
+  over for the placeholder. Pass `--author`.
 
 ## Requirements
 
