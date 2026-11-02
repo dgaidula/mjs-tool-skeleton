@@ -695,8 +695,8 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
   `Ada^ELovelace`) is refused with it. Pass `--author`, or use git’s
   `user.name`; a `^` before any other character passes.
 - **npm hides a value it would redact.** `npm config list --json` leaves out
-  any key whose value npm’s `redact()` changes (a UUID-shaped string, an
-  `npm_` token, a URL with a password), so an `init-author-name` or
+  any key whose value npm’s `redact()` changes (a value holding a UUID-shaped
+  string anywhere, an `npm_` or `npms_` token, a URL with a password), so an `init-author-name` or
   `init-author-email` like that reads as unset, with no `note:`.
 - **A missing home folder hides every config author.** The lookups run in your
   home folder, so when `HOME` names a directory that does not exist each one

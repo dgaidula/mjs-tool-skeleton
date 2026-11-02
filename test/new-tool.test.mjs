@@ -410,10 +410,12 @@ test('author: a config value with a line break or a control character is skipped
 
 // `npm config get` prints a C0 control as caret text (Ada^[Lovelace), which
 // would pass the check; `npm config list --json` keeps the real character.
-// The ESC, ESC-sequence and SOH cases guard that JSON read: through `config
-// get` they would arrive as caret text and get the caret note, not this one.
-// The quoted U+2028 case only pins the JSON path's behaviour: `config get`
-// prints that character raw too, so it would be caught either way.
+// The ESC and SOH cases guard that JSON read: through `config get` they would
+// arrive as caret text and get the caret note, not this one. The ESC-sequence
+// case (an SGR colour, ESC [31m) and the quoted U+2028 case only pin the JSON
+// path's behaviour: npm's STRIP_C01 lets an ESC before a short SGR through, and
+// prints U+2028 raw, so `config get` would show both raw and they would be
+// caught either way.
 test('author: an npm value with a C0 control or a quoted U+2028 is skipped, with a note saying which (R3-1)', () => {
   for (const [name, what] of [
     ['Ada\u001bLovelace', 'a control character'],
@@ -444,6 +446,9 @@ test('author: an npm value holding npm\'s caret text for DEL or C1 is skipped, w
     assert.equal(notes.length, 2, label);
     assert.match(notes[0], /^note: author in npm config skipped: init-author-name holds npm's caret text for a control character \(.*; pass --author\)$/, label);
   }
+  const email = scaffold({ npm: { 'init-author-name': 'Ada Lovelace', 'init-author-email': `npm${String.fromCharCode(0x7f)}@example.com` }, git: GIT });
+  assert.equal(email.pkg.author, 'Git Person <git@example.com>', 'DEL in the npm email');
+  assert.match(email.r.stderr, /^note: author in npm config skipped: init-author-email holds npm's caret text for a control character /);
   const plain = scaffold({ npm: { 'init-author-name': 'A^b', 'init-author-email': 'npm@example.com' }, git: GIT });
   assert.equal(plain.pkg.author, 'A^b <npm@example.com>');
   assert.equal(plain.r.stderr, '');
