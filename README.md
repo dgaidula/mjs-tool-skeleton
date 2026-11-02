@@ -8,7 +8,7 @@ rich human output, a one-line-per-item `--brief`, machine-readable `--json`,
 and a `--quiet` summary, with a dry-run mutation gate, honest exit codes, and
 one line of advice on what to do next.
 
-**Hardened:** 2026-11-01 · 7612e63 · gate CLOSED WITH FOLLOW-UPS
+**Hardened:** 2026-11-02 · 936faf7 · gate CLOSED WITH FOLLOW-UPS (round-5 re-check; its follow-ups landed in f82a749)
 
 ## The problem
 
