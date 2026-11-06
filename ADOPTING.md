@@ -961,18 +961,19 @@ The second runtime revision, and the first within `mjs-tool/3`: the marker
 stays `runtime v3`, the contract string stays `mjs-tool/3`, and `--brief`,
 `--quiet`, `--json` and every exit code are byte for byte what they were (a
 run of 192 invocations against the 0.4.1 runtime proved it). What changes is
-the default human mode and `--help`: a blank line between items, bold item
-names and labels on a terminal, an optional per-item `mark`, and spaced,
+the default human mode and `--help`: a blank line before the first item and
+between items, bold item names and labels (`summary:` and `next:` included)
+on a terminal, an optional per-item `mark`, and spaced,
 bold-headed help. A revision has no number of its own; it is the skeleton
 release and the block’s sha256 (the 0.4.x block was `caf3bd4c…`, or
 `1f1c5c19…` with the newline). For 0.5.0, as §6 asks of a pinned value:
 
 - the block alone, from the first character of the opening line through the
   last of the closing line (the form `test/new-tool.test.mjs` pins):
-  `30e4ef6c1de9bb86691ce38616cbf5e780ee77d8bf89270bdc658082503ac52e`;
+  `6e8cd8a1186090d9d92ab8ee12faccea9eb938b8c7620b6f346710e5a06765c2`;
 - the block and the newline after its closing line (the form most adopted
   fence tests pin, those that hash `fence + "\n"`):
-  `af807ab49aeb4410113663053840cc03e6ca802507f6b6208a6beec1de3596ed`.
+  `37931f3a1fee824688b683172c238a15af81cbc4575a97fa4574684a2492e81c`.
 
 The fence test’s “edited” reading of an adopted tool is therefore expected
 until it re-syncs.
@@ -996,17 +997,21 @@ until it re-syncs.
    some other way is unaffected.
 
 2. **Move the fence test** to the new sha256 and name the release (0.5.0), as
-   step 2 above. Take the value in the form the test hashes: `30e4ef6c…` for
-   the block alone, `af807ab4…` for the block and its newline (both in full
+   step 2 above. Take the value in the form the test hashes: `6e8cd8a1…` for
+   the block alone, `37931f3a…` for the block and its newline (both in full
    above). A test that pins the wrong form stays red.
 
-3. **Update the tests that pin human output.** Each item block is followed by a
-   blank line (the last item’s is the one before `summary:`, as before), so a
-   golden human run gains one empty line between items; a test that pins
-   `--help` text sees two blank lines before every heading, one after it and one after each
+3. **Update the tests that pin human output.** The output opens with one blank
+   line, and each item block is followed by a blank line (the last item’s is
+   the one before `summary:`, as before), so a golden human run gains an empty
+   first line and one between items, and a test that reads a line by its index
+   moves by one; on a terminal the `next:` label is bold as `summary:` is (the
+   command after it is not). A test that pins
+   `--help` text sees two blank lines before every heading, one after it, one before every entry
+   (the first under margin prose too) and one after each
    entry’s block in every section (commands, flags, output modes, exit codes), a block of its
    own for prose at an entry’s indent, and the entry names and usage names in
-   bold on a terminal.
+   bold on a terminal, both keys of `(default)   human` included.
 
 4. **Clear `FORCE_COLOR` and `NO_COLOR` in every test file that runs the tool
    in human mode or with `--help`.** On a terminal `node --test` sets
@@ -1037,7 +1042,10 @@ until it re-syncs.
      wrapped sentence whose last line starts with a capital and ends in a colon
      is read as a heading too, so end it another way.
    - Entries are bold in every section, so put the key of a list in the left
-     column, two spaces from its text (`  Anthropic   https://…`). A prose
+     column, two spaces from its text (`  Anthropic   https://…`). A second
+     lowercase key set off by two or more spaces on both sides is bold with
+     the first (`  (default)   human    …`); a description that opens with a
+     lowercase word and two spaces would be read that way too, so give it one. A prose
      line at an entry’s indent (a closing paragraph, `--json cannot be combined
      with --brief or --quiet.`) is no entry and gets a blank line before it;
      put a blank line before it in the header if it should stand apart already.

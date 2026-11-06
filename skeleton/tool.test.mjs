@@ -1361,7 +1361,7 @@ test('brief is never longer than human, for every verdict, summary, name and rea
       }
     }
   }
-  // Several refuse items with no reason, beside others: the human blank lines (after the last item and between items) are the margin.
+  // Several refuse items with no reason, beside others: the human blank lines (before the first item, after the last and between items) are the margin.
   const refused = { ...OK_ITEM, verdict: 'refuse', reason: '' };
   for (const items of [[refused, refused], [refused, OK_ITEM, refused, refused], [OK_ITEM, refused, { ...OK_ITEM, verdict: 'warn', reason: '' }]]) {
     const brief = renderIn(report, { items, next: nextStep('done', 'x'), mode: 'brief' });
@@ -1470,12 +1470,13 @@ async function renderMode(items, mode, terminal = {}, extra = {}) {
 // The same text with every bold pair the renderer wrote taken out.
 const unbold = (text) => text.replace(/\x1b\[1m([^\x1b]*)\x1b\[22m/g, '$1');
 
-test('human: a blank line between items, exactly one before the summary, none at the start or doubled', async () => {
+test('human: one blank line opens the list, a blank line between items, exactly one before the summary, none doubled', async () => {
   const a = { ...OK_ITEM, name: 'a.txt', summary: 'one', lines: ['kind: file'] };
   const b = { ...OK_ITEM, name: 'b.txt', summary: 'two', verdict: 'warn', reason: 'empty' };
   const c = { ...OK_ITEM, name: 'c.txt', summary: 'three' };
   const out = await renderMode([a, b, c], 'human');
   assert.equal(out, [
+    '', // so the list does not hug the command that ran it (Dan, 2026-11-06)
     '✓ a.txt', '    one', '    kind: file', '',
     '⚠ b.txt', '    two', '    warn: empty', '',
     '✓ c.txt', '    three', '',
@@ -1483,8 +1484,13 @@ test('human: a blank line between items, exactly one before the summary, none at
     'next: done  (x)', '',
   ].join('\n'));
   const one = await renderMode([a], 'human');
-  assert.equal(one, ['✓ a.txt', '    one', '    kind: file', '', 'summary: ok=1 warn=0 skip=0 refuse=0 fail=0', 'next: done  (x)', ''].join('\n'));
-  for (const text of [out, one]) assert.doesNotMatch(text, /\n\n\n/);
+  assert.equal(one, ['', '✓ a.txt', '    one', '    kind: file', '', 'summary: ok=1 warn=0 skip=0 refuse=0 fail=0', 'next: done  (x)', ''].join('\n'));
+  // No items: the one blank line before the summary is the opening one, as before.
+  const none = await renderMode([], 'human');
+  assert.equal(none, ['', 'summary: ok=0 warn=0 skip=0 refuse=0 fail=0', 'next: done  (x)', ''].join('\n'));
+  for (const text of [out, one, none]) assert.doesNotMatch(text, /^\n\n|\n\n\n/);
+  // The opening blank line is the human mode's alone.
+  for (const mode of ['brief', 'quiet']) assert.ok(!(await renderMode([a, b], mode)).startsWith('\n'), mode);
 });
 
 test('bold: on for a terminal, off when piped, under NO_COLOR or TERM=dumb and for FORCE_COLOR=0; FORCE_COLOR forces it on and outranks NO_COLOR and TERM=dumb', async () => {
@@ -1493,7 +1499,7 @@ test('bold: on for a terminal, off when piped, under NO_COLOR or TERM=dumb and f
   assert.doesNotMatch(plain, /\x1b/);
   const bolded = await renderMode([item], 'human', { tty: true });
   assert.equal(bolded, plain.replace('a.txt', BOLD('a.txt')).replace('ok:', BOLD('ok:')).replace('kind:', BOLD('kind:'))
-    .replace('warn: empty', `${BOLD('warn:')} empty`).replace('summary:', BOLD('summary:')));
+    .replace('warn: empty', `${BOLD('warn:')} empty`).replace('summary:', BOLD('summary:')).replace('next:', BOLD('next:')));
   assert.equal(unbold(bolded), plain);
   const cases = [
     [{ tty: true, env: { NO_COLOR: '1' } }, false, 'NO_COLOR on a terminal'],
@@ -1526,6 +1532,24 @@ test('bold: never in --brief, --quiet or --json, whatever the terminal says', as
   }
 });
 
+test('next: the label is bold in human, as summary: is, and only the label: the command and a $\'...\' token stay plain; --brief and --quiet print it plain', async () => {
+  const { nextStep, nextLine, rerunArgv } = await import(TOOL_URL.href);
+  for (const next of [
+    nextStep('ask', 'a person decides: x', { argv: rerunArgv(['apply', 'a\x1b[1mb\nc.txt', '--go']) }),
+    nextStep('run', 'go on   then: more', { argv: rerunArgv(['inspect', 'x‮.txt']) }), // a label-shaped why stays plain
+    nextStep('done', 'read-only: nothing to apply'),
+  ]) {
+    const last = (text) => text.trimEnd().split('\n').at(-1);
+    const loud = last(await renderMode([OK_ITEM], 'human', { tty: true }, { next }));
+    assert.equal(loud, `${BOLD('next:')}${nextLine(next, 'human').slice('next:'.length)}`, next.action);
+    assert.equal(loud.split('\x1b').length, 3, next.action); // one bold pair: nothing after the label, no label in why
+    assert.equal(last(await renderMode([OK_ITEM], 'human', {}, { next })), nextLine(next, 'human'), next.action);
+    for (const mode of ['brief', 'quiet']) {
+      assert.equal(last(await renderMode([OK_ITEM], mode, { tty: true, env: { FORCE_COLOR: '1' } }, { next })), nextLine(next, mode), mode);
+    }
+  }
+});
+
 test('labels: one to three lowercase words and a colon, at the start of a line or after three or more spaces, sentence or not; a URL, a time, a path, a capital, a comma or four words is not', async () => {
   const lines = [
     'variable: ANTHROPIC_API_KEY',
@@ -1551,7 +1575,7 @@ test('labels: one to three lowercase words and a colon, at the start of a line o
     'the file was: gone', // three lowercase words: a label by the rule, though it reads as a sentence
   ];
   const out = await renderMode([{ ...OK_ITEM, lines }], 'human', { tty: true, env: {} });
-  const shown = out.split('\n').slice(2, 2 + lines.length).map((l) => l.slice(4));
+  const shown = out.split('\n').slice(3, 3 + lines.length).map((l) => l.slice(4)); // after the opening blank, the name and the summary
   assert.deepEqual(shown, [
     `${BOLD('variable:')} ANTHROPIC_API_KEY`,
     `${BOLD('file mode:')} 600   ${BOLD('directory mode:')} 700`,
@@ -1600,7 +1624,7 @@ test('mark: printed first on the summary line, in human only; never in --brief, 
   const marked = { ...OK_ITEM, summary: 'ok: 120d left', mark: '🟢' };
   const bare = { ...OK_ITEM, summary: 'ok: 120d left' };
   const out = await renderMode([marked, bare], 'human');
-  assert.equal(out.split('\n').slice(0, 5).join('\n'), '✓ a.txt\n    🟢 ok: 120d left\n\n✓ a.txt\n    ok: 120d left');
+  assert.equal(out.split('\n').slice(0, 6).join('\n'), '\n✓ a.txt\n    🟢 ok: 120d left\n\n✓ a.txt\n    ok: 120d left');
   const bolded = await renderMode([marked], 'human', { tty: true });
   assert.ok(bolded.includes(`\n    🟢 ${BOLD('ok:')} 120d left\n`), bolded); // the mark is not bolded; the label after it is
   for (const mode of ['brief', 'quiet', 'json']) {
@@ -1610,7 +1634,7 @@ test('mark: printed first on the summary line, in human only; never in --brief, 
 });
 
 test('mark: at most eight characters; a blank, non-string or control-bearing mark is dropped; a joined emoji sequence stays whole', async () => {
-  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[1];
+  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[2];
   assert.equal(await line('a'.repeat(8)), '    aaaaaaaa s');
   assert.equal(await line('a'.repeat(9)), '    aaaaaaaa s'); // cut at eight characters
   assert.equal(await line('b'.repeat(500)), '    bbbbbbbb s');
@@ -1625,7 +1649,7 @@ test('mark: at most eight characters; a blank, non-string or control-bearing mar
 });
 
 test('mark: a control character or a bidi mark at either end drops the mark whole; it is not trimmed off and the rest kept', async () => {
-  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[1];
+  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[2];
   const dot = String.fromCodePoint(0x1f7e2);
   for (const dropped of [`${dot}\n`, `\t${dot}`, `${dot}\t`, `\r${dot}`, `${dot}\u2028`, `\u2029${dot}`, `${dot}\x0b`, `\x0c${dot}`,
     `\u200e${dot}`, `${dot}\u200f`, `\u061c${dot}`, `${dot}\u200e${dot}`]) {
@@ -1635,7 +1659,7 @@ test('mark: a control character or a bidi mark at either end drops the mark whol
 });
 
 test('mark: the eight-character cap counts what a reader sees, so a joined emoji past the eighth code point is never split', async () => {
-  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[1];
+  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[2];
   const dot = String.fromCodePoint(0x1f7e2);
   const family = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467, 0x200d, 0x1f466); // seven code points, one character
   assert.equal(await line(`${dot}${dot}${family}`), `    ${dot}${dot}${family} s`);
@@ -1683,7 +1707,7 @@ test('--help: it opens with a blank line and a bold tool name, a heading is bold
   assert.equal(unbold(forced.stdout), plain.stdout);
   const spans = [...forced.stdout.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
   const tool = /^ {2}(\S+) inspect /m.exec(plain.stdout)[1]; // the tool's name as its header spells it
-  const names = [tool, 'inspect', 'apply', '(default)', '--brief', '--json', '--quiet',
+  const names = [tool, 'inspect', 'apply', '(default)   human', '--brief', '--json', '--quiet',
     '--go', '--yes, -y', '--note <text>', '--help, -h', '--version', '--cheat', '0', '1', '2', '3'];
   for (const s of spans) assert.ok(headings.includes(s) || names.includes(s), `unexpected bold span: ${s}`); // never a description
   for (const s of [...headings, ...names]) assert.ok(spans.includes(s), `not bold: ${s}`);
@@ -1694,6 +1718,7 @@ test('--help: it opens with a blank line and a bold tool name, a heading is bold
   assert.ok(forced.stdout.includes(`\n  ${tool} --help | --version | --cheat\n`)); // no subcommand, nothing bold
   assert.ok(forced.stdout.includes(`\n  ${BOLD('inspect')}   Read-only.`));
   assert.ok(forced.stdout.includes(`\n  ${BOLD('--yes, -y')}   apply:`)); // the whole left column, comma and all
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('(default)   human')}    Rich,`)); // both keys of the left column
   assert.ok(forced.stdout.includes(`\n  ${BOLD('--note <text>')}\n`)); // a flag alone on its line
   assert.ok(forced.stdout.includes(`\n  ${BOLD('3')}   could not run`));
   const quiet = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: '1' } });
@@ -1758,6 +1783,7 @@ test('--help: a header shaped otherwise still prints as written, with only blank
       '  Capital  A capital is not a command name, so this is prose at the entry indent.',
       '',
       'Back at the margin without a blank.',
+      '',
       '  five      Under margin prose, so an entry all the same.',
       '',
       'Notes: these are not a heading',
@@ -1909,6 +1935,7 @@ test('--help: in every section the entry name is bold and a blank line separates
       '  2   usage error.',
       '',
       'Back at the margin.',
+      '',
       '  3   under margin prose, so an entry.',
       '',
     ].join('\n'));
@@ -1918,7 +1945,7 @@ test('--help: in every section the entry name is bold and a blank line separates
     assert.deepEqual(spans, [
       'spaced', 'Usage:', 'inspect', 'apply', 'queue add',
       'Commands:', 'inspect', 'apply',
-      'Output modes (all from one list):', '(default)', '--brief', '--quiet',
+      'Output modes (all from one list):', '(default)   human', '--brief', '--quiet',
       'Flags:', '--go', '-y, --yes', '--note <text>', '--out <dir>',
       'Conventions:', 'Exit codes:', '0', '1', '2', '3',
     ]);
@@ -2010,6 +2037,89 @@ test('--help: the tool\'s name is bold where it opens the first line (before a h
       assert.deepEqual(spans, bolded ? [bolded, 'Notes:', 'one'] : ['Notes:', 'one'], first);
       assert.ok(forced.startsWith('\n'), first); // and the help opens with a blank line either way
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--help: a second left-column key is bold with the first (`(default)   human`, Dan: "all the keys in the left column should be bold"); a description word never is', () => {
+  const dir = tmp();
+  try {
+    const header = [
+      'keys - two keys in the left column.',
+      '',
+      'Output modes:',
+      '  (default)   human    The human mode.',
+      '  (default)   human-2  A digit and a hyphen in the second key.',
+      '  0   all ok.', // one space after the word: it is the description
+      '  1   Partial  run.', // a capital: no key
+      '  2   usage.  More.', // punctuation: no key
+      '  3   x   y   Two keys at most.', // the third is not bold
+      '  4   alone', // nothing after it: the description, not a key
+      '  --brief   human   A flag takes no second key.',
+      '  -y, --yes   human   Nor does a comma list.',
+      '',
+      'Commands:',
+      '  list   all   The command rule is its own.',
+    ];
+    const plain = helpWith(dir, 'keys', header);
+    assert.equal(plain, [
+      '', 'keys - two keys in the left column.', '', '',
+      'Output modes:', '',
+      '  (default)   human    The human mode.', '',
+      '  (default)   human-2  A digit and a hyphen in the second key.', '',
+      '  0   all ok.', '', '  1   Partial  run.', '', '  2   usage.  More.', '', '  3   x   y   Two keys at most.', '', '  4   alone', '',
+      '  --brief   human   A flag takes no second key.', '', '  -y, --yes   human   Nor does a comma list.', '', '',
+      'Commands:', '', '  list   all   The command rule is its own.', '',
+    ].join('\n')); // a second key changes no blank line: each of these lines is an entry either way
+    const forced = helpWith(dir, 'keys', header, { FORCE_COLOR: '1' });
+    assert.equal(unbold(forced), plain);
+    const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
+    assert.deepEqual(spans, [
+      'keys', 'Output modes:', '(default)   human', '(default)   human-2', '0', '1', '2', '3   x', '4',
+      '--brief', '-y, --yes', 'Commands:', 'list',
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--help: the first entry directly under margin prose gets a blank line before it, as the entries after it do', () => {
+  const dir = tmp();
+  try {
+    const header = [
+      'prose - entries under a paragraph.',
+      '',
+      "Creating a new key is the person's job:",
+      'Open the page for the vendor and make one there,',
+      'then hand it over.',
+      '  Anthropic   https://example.test/a',
+      '  OpenAI      https://example.test/b',
+      'More prose at the margin.',
+      '',
+      '  Google      https://example.test/c',
+    ];
+    assert.equal(helpWith(dir, 'prose', header), [
+      '', 'prose - entries under a paragraph.', '', '',
+      "Creating a new key is the person's job:", '',
+      'Open the page for the vendor and make one there,', 'then hand it over.', '',
+      '  Anthropic   https://example.test/a', '',
+      '  OpenAI      https://example.test/b', '',
+      'More prose at the margin.', '',
+      '  Google      https://example.test/c', // an author's own blank is not doubled
+      '',
+    ].join('\n'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--help: a header that opens with a heading opens with one blank line, not two (nothing comes before that heading)', () => {
+  const dir = tmp();
+  try {
+    const header = ['Usage:', '  first list', '', 'Exit codes:', '  0   ok'];
+    assert.equal(helpWith(dir, 'first', header), ['', 'Usage:', '', '  first list', '', '', 'Exit codes:', '', '  0   ok', ''].join('\n'));
+    assert.ok(helpWith(dir, 'first', header, { FORCE_COLOR: '1' }).startsWith(`\n${BOLD('Usage:')}\n\n`));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

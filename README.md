@@ -166,10 +166,13 @@ read, and `--brief`, `--quiet` and `--json` carry none of it:
 summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
 ```
 
-- A blank line sits between items, and one before the `summary:` line.
+- One blank line opens the list, so it does not hug the command that ran it
+  (left out of the sample above); a blank line sits between items, and one
+  before the `summary:` line.
 - On a terminal the item name and every label are **bold** (ANSI SGR 1, undone
   with 22): the `warn:` / `refuse:` / `note:` of a reason, the `summary:`
-  label, and a leading `label:` in a summary or a `lines` entry, or a second
+  and `next:` labels (the label alone: the command after `next:` stays plain),
+  and a leading `label:` in a summary or a `lines` entry, or a second
   one after three or more spaces (`file mode: 600   directory mode: 700`). A
   label is one to three lowercase words and a colon followed by a space or the
   line end, so a URL, a time, a capital, a comma or four words before the colon
@@ -198,7 +201,10 @@ summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
   it. Every entry name is bold, in every section: a command, a flag such as
   `--brief` or `-y, --yes` with any `<value>`, a mode, an exit code (an entry
   is two spaces, a first token, two or more spaces and its text, and a lone flag
-  with its text on the lines below counts too). A blank line follows each
+  with its text on the lines below counts too). A second key in the left
+  column, set off by two or more spaces on both sides, is bold with the first:
+  `(default)   human`. A blank line comes before every entry, the first one
+  under a paragraph of prose too, and follows each
   entry’s block, so the eye can track across the page, and a line of prose at
   an entry’s indent is a block of its own. Two blank lines come before each
   heading, so a section reads as one. In `Usage:` the subcommand of each line is
@@ -534,7 +540,8 @@ scaffolded tool. It locks the contract:
   a missing or misshapen hook fails by name as the module loads; `why` is
   escaped and clipped.
 
-- the human layout: a blank line between items and one before the summary;
+- the human layout: a blank line before the first item, one between items
+  and one before the summary, and a bold `next:` label with its command plain;
   bold on a terminal and under `FORCE_COLOR`, none when piped, under
   `NO_COLOR` or `TERM=dumb`, or for `FORCE_COLOR=0`; labels bolded where they
   are labels and not in a URL, a time, a path, after a capital or a comma, or
@@ -543,8 +550,9 @@ scaffolded tool. It locks the contract:
   capped by grapheme so a joined emoji stays whole, dropped when it holds a
   control character or a bidi mark at either end or inside;
   `--brief`, `--quiet` and `--json` the same bytes with every colour variable
-  set; `--help` headings, usage names and every entry name bold, a blank line after
-  each heading and each entry’s block in every section (commands, flags, modes,
+  set; `--help` headings, usage names and every entry name bold (both keys of
+  `(default)   human`), a blank line after each heading, before every entry
+  (under margin prose too) and after each entry’s block in every section (commands, flags, modes,
   exit codes), prose at an entry’s indent a block of its own, with a
   differently shaped header printed as written; a tool’s own `LABEL` or
   `markOf` above the runtime loads, since the layout’s names carry the

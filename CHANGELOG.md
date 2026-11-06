@@ -8,8 +8,8 @@ and every exit code are byte for byte what 0.4.1 printed: 192 invocations
 (four environments, twelve commands, four modes, stdout, stderr and exit code)
 against the 0ef6970 runtime, and the scaffolder’s three modes, came out
 identical. The fence changes, so the sha256 moves from `caf3bd4c…` to
-`30e4ef6c…` (taken with the newline after the closing line, `1f1c5c19…` to
-`af807ab4…`; `ADOPTING.md` gives both in full) and every adopted tool’s pinned
+`6e8cd8a1…` (taken with the newline after the closing line, `1f1c5c19…` to
+`37931f3a…`; `ADOPTING.md` gives both in full) and every adopted tool’s pinned
 hash goes stale until it re-syncs (`ADOPTING.md` §10, “The 0.5.0 revision”). Runtime revisions carry no number of
 their own in this repo: a revision is the skeleton release and the block’s
 sha256, as 0.4.0 was for `v3`.
@@ -87,6 +87,25 @@ the emojis will line up vertically in a long list”, then “go”.
   are bold (`mytool list [files…]`, `list` bold), a line with no subcommand
   (`mytool --help | --version`) bolds nothing. Lines and their order are
   unchanged: only blank lines and bold are added.
+- **The list, `next:` and the left column, after Dan read the layout again**
+  (2026-11-06): “should list start with a return so it's not hugging the
+  cmd?”, so the default human output opens with one blank line before the
+  first item (a run with no items keeps its one blank line before
+  `summary:`); and “should 'next:' be bold since 'summary:' is”, so the
+  `next:` label is bold under the same rules, the label alone: the command
+  and the reason after it stay plain, so a `$'…'`-quoted token never holds a
+  bold code, and `--brief`’s `next:` line is unchanged. In `--help`, by Dan’s
+  rule that “all the keys in the left column should be bold … so each cmd or
+  key is scannable”, an entry like `(default)   human    …` bolds both
+  keys: a lowercase word after the first token, set off by two or more spaces
+  on both sides, is bold with it (a flag takes none, and a word followed by
+  one space or punctuation is the description). The first entry directly
+  under a paragraph of margin prose now gets a blank line before it, as the
+  entries after it do (an adopted tool’s release gate). The scaffolder’s own
+  header no longer ends a wrapped sentence in a colon at the margin, which
+  printed as a heading mid-sentence (help-layout gate F1). Still only blank
+  lines and bold are added over every adopted header, and `--brief`,
+  `--quiet` and `--json` are byte for byte what 0ef6970 printed.
 - **The layout’s names carry the runtime prefix** (`runtimeBoldEnabled`,
   `RUNTIME_LABEL`, `runtimeMarkOf`, `RUNTIME_HELP_ENTRY` and the rest). The
   release gate found that a bare `LABEL` in the block clashed with an adopted
@@ -94,7 +113,7 @@ the emojis will line up vertically in a long list”, then “go”.
   once re-synced. Every adopted tool carrying the v3 fence was scanned for a
   top-level declaration of each fence name and checked with `node --check`
   after the swap: none clashes.
-- **Tests: 97 → 114.** The golden human test takes the new layout; new tests
+- **Tests: 97 → 119.** The golden human test takes the new layout; new tests
   cover the blank-line layout, the bold matrix (a terminal, a pipe,
   `NO_COLOR`, `FORCE_COLOR` in its forms, and both), the label positives and
   negatives, the injection cases, the mark (shown in human, absent from
@@ -107,7 +126,11 @@ the emojis will line up vertically in a long list”, then “go”.
   a control character or a bidi mark at either end, the grapheme cap, a
   sentence-shaped label, a lowercase line that is not a heading, the spacing of
   every section, a tool’s own `LABEL` above the runtime, and `ADOPTING.md`
-  naming both forms of the hash. Both test files now delete `FORCE_COLOR` and `NO_COLOR` before they run
+  naming both forms of the hash; and, from the help-layout gate, the
+  scaffolder’s own `--help` (its bold spans and every blank line it adds), a
+  header that opens with a heading, the second left-column key with its
+  negatives, the bold `next:` label beside a `$'…'` command, and the entry
+  under margin prose. Both test files now delete `FORCE_COLOR` and `NO_COLOR` before they run
   anything: on a terminal `node --test` sets `FORCE_COLOR=1` for its files,
   which would otherwise put bold into every human-mode run.
 - Docs: README (the human layout, the item fields), CLAUDE.md (invariants 12,

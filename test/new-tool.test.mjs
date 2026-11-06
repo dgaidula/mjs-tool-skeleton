@@ -627,7 +627,7 @@ test('the runtime fence is byte-identical in the skeleton and the scaffolder', (
 });
 
 // Adopted tools pin this hash (the block, both marker lines included, no trailing newline).
-const FENCE_SHA256 = '30e4ef6c1de9bb86691ce38616cbf5e780ee77d8bf89270bdc658082503ac52e';
+const FENCE_SHA256 = '6e8cd8a1186090d9d92ab8ee12faccea9eb938b8c7620b6f346710e5a06765c2';
 
 test('the runtime fence hashes to the pinned sha256 in both files', () => {
   for (const file of [NEW_TOOL, SKELETON]) {
@@ -646,8 +646,8 @@ test('human lines follow the 2026-11-06 layout; brief lines follow the v3 rule; 
   // Golden output first captured from 0.1.0 (git show 69851df:skeleton/tool.mjs,
   // run in a temp dir over these files). v2 added the final next: line. v3
   // changed only the brief item lines (no padding, no glyph). The human block
-  // is 0.1.0's with one blank line between items (Dan, 2026-11-06); bold and
-  // marks are off here, since this output is piped.
+  // is 0.1.0's with one blank line between items and one before the first
+  // (Dan, 2026-11-06); bold and marks are off here, since this output is piped.
   const golden = {
     brief: [
       'ok would touch mtime  report.txt',
@@ -657,6 +657,7 @@ test('human lines follow the 2026-11-06 layout; brief lines follow the v3 rule; 
       'summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)',
     ],
     human: [
+      '',
       '✓ report.txt', '    would touch mtime', '',
       '✓ notes.txt', '    would touch mtime', '',
       '• assets', '    is a directory', '    skip: apply targets files, not directories', '',
@@ -756,6 +757,46 @@ test('new-tool has its own --cheat card, and refuses it beside an output mode', 
     assert.equal(bad.stdout, '', mode);
     assert.match(bad.stderr, new RegExp(`--cheat and ${mode} cannot be combined`), mode);
   }
+});
+
+test('new-tool --help: only its name, its two headings and its exit codes are bold, and blank lines go only where the layout puts them (no wrapped line reads as a heading)', () => {
+  const plain = run(['--help']).stdout;
+  const forced = run(['--help'], { env: { ...BASE_ENV, FORCE_COLOR: '1' } }).stdout;
+  assert.doesNotMatch(plain, /\x1b/);
+  assert.equal(forced.replace(/\x1b\[1m([^\x1b]*)\x1b\[22m/g, '$1'), plain);
+  const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
+  assert.deepEqual(spans, ['new-tool', 'Usage:', 'Exit codes:', '0', '1', '2', '3']);
+  // The header as written, then the blank lines the help adds before each of its lines.
+  const raw = [];
+  for (const l of readFileSync(NEW_TOOL, 'utf8').split('\n').slice(1)) {
+    if (!l.startsWith('//')) break;
+    raw.push(l.slice(3));
+  }
+  const added = [];
+  let at = 0;
+  let blanks = 0;
+  for (const l of plain.replace(/\n$/, '').split('\n')) {
+    if (at < raw.length && l === raw[at]) {
+      if (blanks) added.push([raw[at].slice(0, 20), blanks]);
+      at += 1;
+      blanks = 0;
+    } else {
+      assert.equal(l, '', 'the help adds blank lines and nothing else');
+      blanks += 1;
+    }
+  }
+  assert.equal(at, raw.length, 'every header line is printed, in order');
+  assert.deepEqual(added, [
+    ['new-tool - scaffold ', 1], // the opening blank line
+    ['Usage:', 1], // two before a heading: the header's own and one more
+    ['  new-tool <name> [-', 1], // one after it
+    ['Sources 2 and 3 are ', 1], // the margin closes the numbered list's block
+    ['Exit codes:', 1],
+    ['  0   scaffolded ok.', 1],
+    ['  1   refused (the t', 1], // a blank line after each entry's block
+    ['  2   usage error (m', 1],
+    ['  3   could not run ', 1],
+  ]);
 });
 
 test('the example card in ADOPTING.md section 8 is a valid card', () => {

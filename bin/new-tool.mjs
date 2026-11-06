@@ -37,10 +37,10 @@
 // it gives a name; a config source whose name or email holds a line break, a
 // control character, a bidi control or mark (U+200E, U+200F, U+061C) or an
 // angle bracket is skipped, with a `note:` on stderr saying which. npm prints
-// DEL and C1 controls as caret text, so npm's values are checked through it:
-// one holding ^? or ^@ to ^_ is skipped the same way. The copied LICENSE file
-// keeps the skeleton's own copyright notice: the MIT licence requires it to
-// travel with the code.
+// DEL and C1 controls as caret text, so npm's values are checked through
+// it: one holding ^? or ^@ to ^_ is skipped the same way. The copied LICENSE
+// file keeps the skeleton's own copyright notice: the MIT licence requires it
+// to travel with the code.
 //
 // --cheat prints a short card of common invocations in tldr page format (the
 // CHEAT constant below) and exits 0, printing nothing else. It cannot be
@@ -949,6 +949,8 @@ function report({ command, effect, items, next, state = null, mode, argv = proce
   if (mode === 'brief') {
     for (const it of items) lines.push(briefLine(it));
   } else if (mode === 'human') {
+    // One blank line opens the list, so it does not hug the command that ran it.
+    if (items.length) lines.push('');
     items.forEach((it, i) => {
       if (i) lines.push('');
       const mark = runtimeMarkOf(it);
@@ -960,7 +962,9 @@ function report({ command, effect, items, next, state = null, mode, argv = proce
     lines.push('');
   }
   lines.push(mode === 'human' ? runtimeBoldLabels(summaryLine(summary, effect), bold) : summaryLine(summary, effect));
-  if (next) lines.push(nextLine(next, mode));
+  // The `next:` label is bold as `summary:` is (bold() is plain outside human);
+  // the command after it is never touched, so a $'...' token stays as quoted.
+  if (next) lines.push(`${bold('next:')}${nextLine(next, mode).slice('next:'.length)}`);
   return emit(`${lines.join('\n')}\n`);
 }
 
@@ -1003,12 +1007,16 @@ function environmentError(message) {
 // token, two or more spaces and its text; the token is bold, the text is not.
 // The token is a flag or a comma-separated list of them (`--brief`, `-y,
 // --yes`), each with any `<value>` or `[value]` after it, or one word (a mode,
-// an exit code, a name). One flag may also stand alone, its text on the lines
-// below (`--note <text>`). In the `Commands:` section the token is a lowercase
-// command name (up to three words). A blank line follows each entry's block
-// (the lines up to the next entry or the end of the section). A line of two
-// spaces that is not an entry (prose at an entry's indent, a flag with one
-// space after it) is a block of its own, with a blank line before it. In
+// an exit code, a name), and a lowercase word after it when two or more spaces
+// set that word off on both sides (`(default)   human    Rich ...`: both are
+// keys in the left column, so both are bold). One flag may also stand alone,
+// its text on the lines below (`--note <text>`). In the `Commands:` section
+// the token is a lowercase command name (up to three words). A blank line
+// comes before every entry, the first one under a line of margin prose
+// included, and follows each entry's block (the lines up to the next entry or
+// the end of the section). A line of two spaces that is not an entry (prose
+// at an entry's indent, a flag with one space after it) is a block of its own,
+// with a blank line before it. In
 // `Usage:` the lowercase words after the tool name (the first token of the first
 // usage line) are bold, the name and the arguments are not, on each line that
 // begins with that name; no blank lines come between usage lines. The blank
@@ -1018,7 +1026,7 @@ const RUNTIME_HELP_TITLE = /^([^\s:]+)(?=: | [-–—] )/;
 const RUNTIME_HELP_HEADING = /^[A-Z][^:]*:$/;
 const RUNTIME_HELP_COMMAND = /^ {2}([a-z][a-z0-9._:-]*(?: [a-z][a-z0-9._:-]*){0,2})( {2,}\S.*)$/;
 const RUNTIME_HELP_FLAG = '-[^\\s,]+(?: <[^<>]+>| \\[[^[\\]]+\\])*';
-const RUNTIME_HELP_ENTRY = new RegExp(`^ {2}(${RUNTIME_HELP_FLAG}$|${RUNTIME_HELP_FLAG}(?:, ${RUNTIME_HELP_FLAG})*(?= {2,}\\S)|[^\\s-]\\S*(?= {2,}\\S))(.*)$`);
+const RUNTIME_HELP_ENTRY = new RegExp(`^ {2}(${RUNTIME_HELP_FLAG}$|${RUNTIME_HELP_FLAG}(?:, ${RUNTIME_HELP_FLAG})*(?= {2,}\\S)|[^\\s-]\\S*(?: {2,}[a-z][a-z0-9-]*)?(?= {2,}\\S))(.*)$`);
 const RUNTIME_HELP_USAGE = /^ {2}(\S+)((?: [a-z][a-z0-9_-]*){0,3})(?= |$)/;
 
 function helpText() {
@@ -1073,7 +1081,7 @@ function helpText() {
     }
     const entry = (section === 'Commands:' ? RUNTIME_HELP_COMMAND : RUNTIME_HELP_ENTRY).exec(l);
     if (entry) {
-      if (block !== null) blank();
+      blank(); // the first entry under margin prose too, as every other entry
       out.push(`  ${bold(entry[1])}${entry[2]}`);
       block = 'entry';
     } else {

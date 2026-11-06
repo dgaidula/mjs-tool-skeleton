@@ -149,7 +149,7 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     guard is its last statement, so every top-level binding is initialised
     before `main()` runs), carries its own namespaced imports, holds no
     tool-specific code and no `<tool>` placeholder. A contract change bumps
-    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `30e4ef6c…` (`af807ab4…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
+    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `6e8cd8a1…` (`37931f3a…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
 
 13. **Text output is frozen, except the `--brief` item line, which has one rule, and the human layout, which changed once.**
     The summary line is byte-identical to what 0.1.0 printed, the
@@ -157,8 +157,8 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     human item block (the glyph and name, the summary, the `lines`, the reason).
     What came after: the final `next:` line (v2), whose form differs by mode
     (invariant 10), and the layout of invariant 15 (0.5.0, Dan’s decision of
-    2026-11-06, his words in CHANGELOG): a blank line between items, bold, and
-    the optional mark. The golden test locks all of it — change it only on Dan’s
+    2026-11-06, his words in CHANGELOG): a blank line before the first item and
+    between items, bold, and the optional mark. The golden test locks all of it — change it only on Dan’s
     say-so. The
     brief item line is `<verdict> <summary>  <name>`, with no padding and no
     glyph (v3, 0.4.0; Dan’s decision of 2026-10-24: `--brief` is to cut output
@@ -171,9 +171,9 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     comparison is in bytes; a literal cut there would make the line longer than
     the human reason line), and a `refuse` item with an empty reason is exactly
     as long as its human block (the verdict word is six letters), so the human
-    blank lines are the whole margin (one after the last item, one between
-    items): the brief output is one byte shorter for one such item, and one byte
-    shorter again for each more. The size test carries an empty reason for that
+    blank lines are the whole margin (one before the first item, one after the
+    last, one between items): the brief output is two bytes shorter for one
+    such item, and one byte shorter again for each more. The size test carries an empty reason for that
     zero-margin case. The cut counts the reason’s own code points, before
     escaping, so it never falls inside an escape, and N counts the same way.
 
@@ -218,10 +218,14 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
       word before the colon makes it not one; a sentence that opens with one to
       three lowercase words and a colon is one (`the file was: gone` bolds
       `the file was:`), and the tests say so. The name after the glyph and the
-      `summary:` label are bold too.
-      `next:` is not.
-    - **Layout:** a blank line between items and exactly one before `summary:`,
-      colour or not; nothing before the first item.
+      `summary:` label are bold too, and so is the `next:` label (Dan,
+      2026-11-06: “should 'next:' be bold since 'summary:' is”), alone: the
+      command and the reason after it are never bolded, so a `$'…'` token
+      holds no bold code. `--brief`’s `next:` line stays plain.
+    - **Layout:** one blank line before the first item (Dan, 2026-11-06:
+      “should list start with a return so it's not hugging the cmd?”), a blank
+      line between items and exactly one before `summary:`, colour or not; a
+      run with no items prints that one blank line, then `summary:`.
     - **`item.mark`** is a short string (a coloured dot, say) the tool sets,
       printed first on the summary line as `    <mark> <summary>`. A mark that
       is not a string, holds a control character (TAB included) or a bidi mark
@@ -243,8 +247,14 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
       text, and the token alone is bold in every section (a command name, up to
       three lowercase words, in `Commands:`; elsewhere a flag or a comma list
       of flags with any `<value>` or `[value]`, which may stand alone with its
-      text below, or one word: a mode, an exit code, a name). A blank line
-      follows each entry’s block. A line of two spaces that is not an entry
+      text below, or one word: a mode, an exit code, a name, and a lowercase
+      word after it when two or more spaces set that word off on both sides,
+      `(default)   human`, so every key in the left column is bold; a flag
+      takes no second key, and a description word followed by one space or
+      punctuation is never one). A blank line comes before every entry, the
+      first one directly under margin prose included (an adopted tool’s
+      release gate found that one glued to its paragraph), and one follows
+      each entry’s block. A line of two spaces that is not an entry
       (prose at the entry indent, a flag with one space after it) is a block of
       its own with a blank line before it (the 0.5.0 re-check’s R1-1). In
       `Usage:` the lowercase words after the tool name (the first token of the
