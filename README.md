@@ -146,7 +146,7 @@ the contract, the `--brief` lines, the `--json` keys and the exit codes are
 untouched). The default human mode is for a person, so it is set out to be
 read, and `--brief`, `--quiet` and `--json` carry none of it:
 
-`apply report.txt notes.txt assets gone.txt` (a dry run, then its `next:` line):
+`apply report.txt notes.txt assets gone.txt` (a dry run; the `next:` line that ends it is left out here):
 
 ```
 ✓ report.txt
@@ -172,25 +172,36 @@ summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
   label, and a leading `label:` in a summary or a `lines` entry, or a second
   one after three or more spaces (`file mode: 600   directory mode: 700`). A
   label is one to three lowercase words and a colon followed by a space or the
-  line end, so a URL, a time or a sentence with a colon in it is not bolded.
-  Output that is piped or redirected has no escape byte. `NO_COLOR` set to a
-  non-empty value ([no-color.org](https://no-color.org)) turns bold off;
-  `FORCE_COLOR` set to a non-empty value other than `0` or `false`
+  line end, so a URL, a time, a capital, a comma or four words before the colon
+  is not bolded; a short lowercase phrase is, even in a sentence
+  (`the file was: gone` bolds `the file was:`). Output that is piped or
+  redirected has no escape byte, and nor does a terminal whose `TERM` is
+  `dumb` (Node reads it the same way). `NO_COLOR` set to a non-empty value
+  ([no-color.org](https://no-color.org)) turns bold off; `FORCE_COLOR` set to
+  a non-empty value other than `0` or `false`
   ([force-color.org](https://force-color.org), and Node’s own reading of it)
-  turns it on even when piped, and wins over `NO_COLOR`. Item text is escaped
-  before it is made bold, so a name holding an escape sequence can neither
-  start nor end a bold span.
+  turns it on even when piped, and wins over `NO_COLOR` and `TERM=dumb`. Item
+  text is escaped before it is made bold, so a name holding an escape sequence
+  can neither start nor end a bold span.
 - An item may carry a `mark`: a short string, one emoji say, that the tool
   sets to show state at a glance. It prints first on the summary line,
   `    🟢 ok: 120d left`, so the marks line up down a long list. It is the
   human mode’s alone: never in `--brief`, `--quiet` or `--json`, which is
   why the facts it stands for belong in `data`. At most eight characters are
-  kept, and a mark that is not a string, is blank or holds a control character
-  is dropped. Items without one print as they do without the feature.
+  kept, counted as a reader sees them, so a joined emoji is never cut; a mark
+  that is not a string, is blank, or holds a control character or a bidi mark
+  (U+200E, U+200F, U+061C) anywhere, its ends included, is dropped whole. Items
+  without one print as they do without the feature.
 - `--help` bolds each heading (`Usage:`, `Commands:` …) and, in the
   `Commands:` section, each command name at the start of an entry (two spaces,
-  the name, two or more spaces), and leaves a blank line after each command’s
-  block. A header shaped otherwise prints as written.
+  the name, two or more spaces). In every section that lists entries
+  (`Commands:`, `Flags:`, `Output modes`, `Exit codes:` …) it leaves a blank
+  line after each entry’s block, so the eye can track across the page; an
+  entry is two spaces, a first token (a command, a flag such as `--brief` or
+  `-y, --yes` with any `<value>`, a mode, an exit code), two or more spaces
+  and its text, and a lone flag with its text on the lines below counts too.
+  Names outside `Commands:` stay plain. A header shaped otherwise prints as
+  written.
 
 The item fields the renderer reads are `path`, `name`, `verdict`, `summary`,
 `reason`, `changed` and `data` (all in `--json`), and two for the human mode
@@ -521,13 +532,18 @@ scaffolded tool. It locks the contract:
 
 - the human layout: a blank line between items and one before the summary;
   bold on a terminal and under `FORCE_COLOR`, none when piped, under
-  `NO_COLOR`, or for `FORCE_COLOR=0`; labels bolded where they are labels and
-  not in a URL, a time, a path or a sentence; an item with an escape sequence in
-  any field can neither open nor close a bold span; a `mark` printed first in
-  human and nowhere else, capped, dropped when it holds a control character;
+  `NO_COLOR` or `TERM=dumb`, or for `FORCE_COLOR=0`; labels bolded where they
+  are labels and not in a URL, a time, a path, after a capital or a comma, or
+  four words long; an item with an escape sequence in any field can neither
+  open nor close a bold span; a `mark` printed first in human and nowhere else,
+  capped by grapheme so a joined emoji stays whole, dropped when it holds a
+  control character or a bidi mark at either end or inside;
   `--brief`, `--quiet` and `--json` the same bytes with every colour variable
   set; `--help` headings and command names bold and a blank line after each
-  command’s block, with a differently shaped header printed as written.
+  entry’s block in every section (commands, flags, modes, exit codes), with a
+  differently shaped header printed as written; a tool’s own `LABEL` or
+  `markOf` above the runtime loads, since the layout’s names carry the
+  runtime prefix.
 
 - the pre-freeze changes: a text-mode `run` line pasted into a fresh
   `/bin/sh` from another directory applies, in every text mode; an `ask`

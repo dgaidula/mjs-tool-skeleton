@@ -516,7 +516,8 @@ export { agentBlockFor, briefLine, summarize, exitCodeFor };
 // The shared machinery of contract mjs-tool/3, byte-identical in every tool
 // built from mjs-tool-skeleton. It carries its own imports (namespaced, so they
 // never collide with the tool's); its other top-level names are unprefixed, so
-// a tool keeps no copies of them. The tool supplies, outside this block:
+// a tool keeps no copies of them, except the human layout's, which carry a
+// runtime prefix for the same reason. The tool supplies, outside this block:
 // MUTATING_COMMANDS, AUTO_RUN_COMMANDS, EXTRA_OVERRIDE_FLAGS, GO_ALIASES,
 // main(), and a nextAction() policy whose result it hands to report(); the
 // block checks their shapes as it loads. To move a tool to a later contract,
@@ -796,39 +797,47 @@ function printable(text) {
 // "Environment variables"). Node also takes '0' as off and any value but
 // 1, 2, 3, true or empty as off; this takes '0' and 'false' as off and every
 // other non-empty value as on, as force-color.org does, and an empty one as unset.
-function boldEnabled(env = process.env, isTTY = process.stdout.isTTY) {
+// TERM=dumb (a terminal that shows an escape as text) gets no bold either,
+// unless FORCE_COLOR forces it: Node's getColorDepth() and hasColors() read it
+// the same way (2 colours for TERM=dumb, 16 once FORCE_COLOR=1 is set too).
+function runtimeBoldEnabled(env = process.env, isTTY = process.stdout.isTTY) {
   const force = env.FORCE_COLOR;
   if (force) return force !== '0' && force !== 'false';
-  return !env.NO_COLOR && !!isTTY;
+  return !env.NO_COLOR && env.TERM !== 'dumb' && !!isTTY;
 }
 
-function boldWith(on) {
+function runtimeBoldWith(on) {
   return (text) => (on ? `\x1b[1m${text}\x1b[22m` : text);
 }
 
 // A label: one to three lowercase words (letters, digits after the first, dots
 // and hyphens) and a colon that ends the line or is followed by a space. It
 // opens the text, or follows three or more spaces (`file mode: 600   directory
-// mode: 700`), so a URL (`https://`), a time (`12:30`), a Windows path (`C:\`) or
-// a sentence with a colon in it is never bolded. Run it on text already
-// escaped by printable(): the escaped text holds no ESC, so nothing in an item
-// can open or close the bold.
-const LABEL_WORD = '[a-z][a-z0-9.-]*';
-const LABEL = new RegExp(`(?:^|(?<= {3}))(${LABEL_WORD}(?: ${LABEL_WORD}){0,2}):(?= |$)`, 'g');
+// mode: 700`), so a URL (`https://`), a time (`12:30`), a Windows path (`C:\`),
+// a capital, a comma or four words before the colon are never bolded; a phrase
+// of one to three lowercase words is, sentence or not (`the file was: gone`).
+// Run it on text already escaped by printable(): the escaped text holds no
+// ESC, so nothing in an item can open or close the bold.
+const RUNTIME_LABEL_WORD = '[a-z][a-z0-9.-]*';
+const RUNTIME_LABEL = new RegExp(`(?:^|(?<= {3}))(${RUNTIME_LABEL_WORD}(?: ${RUNTIME_LABEL_WORD}){0,2}):(?= |$)`, 'g');
 
-function boldLabels(text, bold) {
-  return text.replace(LABEL, (_, label) => bold(`${label}:`));
+function runtimeBoldLabels(text, bold) {
+  return text.replace(RUNTIME_LABEL, (_, label) => bold(`${label}:`));
 }
 
 // An item's optional `mark`: a short decoration (one emoji) the tool sets and
-// only the human renderer prints, first on the summary line. At most MARK_MAX
-// characters (code points); dropped whole when it is not a string, is blank,
-// or holds a control character (TAB included), so it never reaches a line.
-const MARK_MAX = 8;
-function markOf(item) {
-  const mark = typeof item.mark === 'string' ? item.mark.trim() : '';
-  if (!mark || CONTROL_CHARS.test(mark) || mark.includes('\t')) return '';
-  return printable(Array.from(mark).slice(0, MARK_MAX).join(''));
+// only the human renderer prints, first on the summary line. Dropped whole when
+// it is not a string, holds a control character (TAB included) or a bidi mark
+// (U+200E, U+200F, U+061C) anywhere, ends included, or is blank once trimmed,
+// so it never reaches a line; then cut to RUNTIME_MARK_MAX characters, counted
+// as a reader sees them (grapheme clusters), so a joined emoji is never split.
+const RUNTIME_MARK_MAX = 8;
+function runtimeMarkOf(item) {
+  if (typeof item.mark !== 'string' || CONTROL_CHARS.test(item.mark) || /[\t\u200e\u200f\u061c]/.test(item.mark)) return '';
+  const mark = item.mark.trim();
+  if (!mark) return '';
+  const shown = Array.from(new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(mark), (s) => s.segment);
+  return printable(shown.slice(0, RUNTIME_MARK_MAX).join(''));
 }
 
 // POSIX single-quoting, only where a token needs it; a token holding a control
@@ -936,21 +945,21 @@ function report({ command, effect, items, next, state = null, mode, argv = proce
   }
 
   const lines = [];
-  const bold = boldWith(mode === 'human' && boldEnabled());
+  const bold = runtimeBoldWith(mode === 'human' && runtimeBoldEnabled());
   if (mode === 'brief') {
     for (const it of items) lines.push(briefLine(it));
   } else if (mode === 'human') {
     items.forEach((it, i) => {
       if (i) lines.push('');
-      const mark = markOf(it);
+      const mark = runtimeMarkOf(it);
       lines.push(`${glyph(it.verdict)} ${bold(printable(it.name))}`,
-        `    ${mark ? `${mark} ` : ''}${boldLabels(printable(it.summary), bold)}`);
-      for (const line of it.lines || []) lines.push(`    ${boldLabels(printable(line), bold)}`);
-      if (it.reason) lines.push(`    ${boldLabels(`${it.verdict === 'ok' ? 'note' : it.verdict}: ${printable(it.reason)}`, bold)}`);
+        `    ${mark ? `${mark} ` : ''}${runtimeBoldLabels(printable(it.summary), bold)}`);
+      for (const line of it.lines || []) lines.push(`    ${runtimeBoldLabels(printable(line), bold)}`);
+      if (it.reason) lines.push(`    ${runtimeBoldLabels(`${it.verdict === 'ok' ? 'note' : it.verdict}: ${printable(it.reason)}`, bold)}`);
     });
     lines.push('');
   }
-  lines.push(mode === 'human' ? boldLabels(summaryLine(summary, effect), bold) : summaryLine(summary, effect));
+  lines.push(mode === 'human' ? runtimeBoldLabels(summaryLine(summary, effect), bold) : summaryLine(summary, effect));
   if (next) lines.push(nextLine(next, mode));
   return emit(`${lines.join('\n')}\n`);
 }
@@ -983,14 +992,21 @@ function environmentError(message) {
 // pattern): skip the shebang, take the contiguous `//` lines, strip the `// `.
 // The text is then set out for reading. A heading is a line that is a
 // capitalised phrase ending in a colon (`Usage:`, `Output modes (all rendered
-// from one list):`) and is bold. In the `Commands:` section an entry is two
-// spaces, the command name, two or more spaces and its text; the name is bold,
-// and a blank line follows each entry's block (the lines up to the next entry or
-// the end of the section, which is the next heading or a line back at the left
-// margin). The blank lines are always added, the bold only where boldEnabled()
-// allows it. A header shaped otherwise prints as written.
-const HELP_HEADING = /^[A-Z][A-Za-z ]*(?: \([^()]*\))?:$/;
-const HELP_COMMAND = /^ {2}([a-z][a-z0-9._:-]*(?: [a-z][a-z0-9._:-]*){0,2})( {2,}\S.*)$/;
+// from one list):`) and is bold. It opens a section, which ends at the next
+// heading or a line back at the left margin. In a section an entry is a line of
+// two spaces, a first token, two or more spaces and its text; the token is a
+// flag or a comma-separated list of them (`--brief`, `-y, --yes`), each with
+// any `<value>` or `[value]` after it, or one word (a mode, an exit code). One
+// flag may also stand alone, its text on the lines below (`--note <text>`).
+// In the `Commands:` section an entry is two spaces, a lowercase command name
+// (up to three words), two or more spaces and its text, and the name is bold;
+// elsewhere the token stays plain. A blank line follows each entry's block (the
+// lines up to the next entry or the end of the section). The blank lines are
+// always added, the bold only where runtimeBoldEnabled() allows it. A header
+// shaped otherwise prints as written.
+const RUNTIME_HELP_HEADING = /^[A-Z][A-Za-z ]*(?: \([^()]*\))?:$/;
+const RUNTIME_HELP_COMMAND = /^ {2}([a-z][a-z0-9._:-]*(?: [a-z][a-z0-9._:-]*){0,2})( {2,}\S.*)$/;
+const RUNTIME_HELP_ENTRY = /^ {2}(?:-[^\s,]+(?: <[^<>]+>| \[[^[\]]+\])*(?:(?:, -[^\s,]+(?: <[^<>]+>| \[[^[\]]+\])*)* {2,}\S.*)?|[^\s-]\S* {2,}\S.*)$/;
 
 function helpText() {
   const lines = runtimeFs.readFileSync(SCRIPT_PATH, 'utf8').split('\n');
@@ -999,28 +1015,32 @@ function helpText() {
     if (!l.startsWith('//')) break;
     raw.push(l.slice(3));
   }
-  const bold = boldWith(boldEnabled());
+  const bold = runtimeBoldWith(runtimeBoldEnabled());
   const out = [];
-  let inCommands = false;
-  let afterHeading = false;
+  let section = null; // the heading of the section this line is in, null outside one
+  let inEntry = false; // inside an entry's block, which close() ends with a blank line
+  const close = () => {
+    if (inEntry && out.at(-1) !== '') out.push('');
+    inEntry = false;
+  };
   for (const l of raw) {
-    const heading = HELP_HEADING.test(l);
-    if (inCommands && (heading || (l !== '' && !l.startsWith(' '))) && out.at(-1) !== '') out.push('');
+    const heading = RUNTIME_HELP_HEADING.test(l);
+    if (heading || (l !== '' && !l.startsWith(' '))) {
+      close();
+      section = heading ? l : null;
+    }
     if (heading) {
-      inCommands = l === 'Commands:';
-      afterHeading = true;
       out.push(bold(l));
       continue;
     }
-    if (l !== '' && !l.startsWith(' ')) inCommands = false;
-    const entry = inCommands ? HELP_COMMAND.exec(l) : null;
-    if (entry) {
-      if (!afterHeading && out.at(-1) !== '') out.push('');
-      out.push(`  ${bold(entry[1])}${entry[2]}`);
+    const command = section === 'Commands:' ? RUNTIME_HELP_COMMAND.exec(l) : null;
+    if (command || (section !== null && section !== 'Commands:' && RUNTIME_HELP_ENTRY.test(l))) {
+      close();
+      out.push(command ? `  ${bold(command[1])}${command[2]}` : l);
+      inEntry = true;
     } else {
       out.push(l);
     }
-    afterHeading = false;
   }
   return out.join('\n');
 }

@@ -627,13 +627,19 @@ test('the runtime fence is byte-identical in the skeleton and the scaffolder', (
 });
 
 // Adopted tools pin this hash (the block, both marker lines included, no trailing newline).
-const FENCE_SHA256 = '27679d92f2ce237031c20279286eaeffe9141668b7ea9ee0ecfcdb9aba612405';
+const FENCE_SHA256 = 'f18f06964de30ba391069e8c42d215a2a193cfa9dd51d21640bfc4cfb7f571dc';
 
 test('the runtime fence hashes to the pinned sha256 in both files', () => {
   for (const file of [NEW_TOOL, SKELETON]) {
     assert.equal(createHash('sha256').update(fenceOf(file)).digest('hex'), FENCE_SHA256,
       `${file}: the fence changed, so every adopted tool's pinned hash goes stale: ship it as a runtime revision (adopters re-sync by ADOPTING.md §10) and only then update FENCE_SHA256`);
   }
+});
+
+test('ADOPTING.md names the fence sha256 in both forms an adopted test pins: the block alone, and with its newline', () => {
+  const doc = readFileSync(fileURLToPath(new URL('../ADOPTING.md', import.meta.url)), 'utf8');
+  const withNewline = createHash('sha256').update(`${fenceOf(SKELETON)}\n`).digest('hex');
+  for (const hash of [FENCE_SHA256, withNewline]) assert.ok(doc.includes(hash), `ADOPTING.md does not name ${hash}`);
 });
 
 test('human lines follow the 2026-11-06 layout; brief lines follow the v3 rule; summary lines are byte-identical in both (README sample)', () => {

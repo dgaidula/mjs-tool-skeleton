@@ -1444,11 +1444,11 @@ test('brief: the reason cut never falls inside an escape (an ESC or a \\u escape
 
 const BOLD = (s) => `\x1b[1m${s}\x1b[22m`;
 
-// Run fn with stdout a terminal or not and FORCE_COLOR / NO_COLOR as given
-// (neither is set otherwise, whatever the parent's environment holds), then put
-// everything back.
+// Run fn with stdout a terminal or not and FORCE_COLOR / NO_COLOR / TERM as
+// given (none is set otherwise, whatever the parent's environment holds), then
+// put everything back.
 function withTerminal({ tty = false, env = {} }, fn) {
-  const saved = Object.fromEntries(['FORCE_COLOR', 'NO_COLOR'].map((k) => [k, process.env[k]]));
+  const saved = Object.fromEntries(['FORCE_COLOR', 'NO_COLOR', 'TERM'].map((k) => [k, process.env[k]]));
   const own = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
   for (const k of Object.keys(saved)) delete process.env[k];
   Object.assign(process.env, env);
@@ -1487,7 +1487,7 @@ test('human: a blank line between items, exactly one before the summary, none at
   for (const text of [out, one]) assert.doesNotMatch(text, /\n\n\n/);
 });
 
-test('bold: on for a terminal, off when piped, under NO_COLOR and for FORCE_COLOR=0; FORCE_COLOR forces it on and outranks NO_COLOR', async () => {
+test('bold: on for a terminal, off when piped, under NO_COLOR or TERM=dumb and for FORCE_COLOR=0; FORCE_COLOR forces it on and outranks NO_COLOR and TERM=dumb', async () => {
   const item = { ...OK_ITEM, name: 'a.txt', summary: 'ok: 12d left', lines: ['kind: file'], verdict: 'warn', reason: 'empty' };
   const plain = await renderMode([item], 'human');
   assert.doesNotMatch(plain, /\x1b/);
@@ -1506,6 +1506,9 @@ test('bold: on for a terminal, off when piped, under NO_COLOR and for FORCE_COLO
     [{ tty: true, env: { FORCE_COLOR: 'false' } }, false, 'FORCE_COLOR=false turns it off'],
     [{ tty: true, env: { FORCE_COLOR: '1', NO_COLOR: '1' } }, true, 'FORCE_COLOR outranks NO_COLOR'],
     [{ tty: false, env: { FORCE_COLOR: '0', NO_COLOR: '1' } }, false, 'both off'],
+    [{ tty: true, env: { TERM: 'dumb' } }, false, 'TERM=dumb on a terminal: escapes would show as text'],
+    [{ tty: true, env: { TERM: 'xterm-256color' } }, true, 'any other TERM on a terminal'],
+    [{ tty: true, env: { TERM: 'dumb', FORCE_COLOR: '1' } }, true, 'FORCE_COLOR outranks TERM=dumb, as in Node'],
   ];
   for (const [terminal, on, why] of cases) {
     assert.equal(await renderMode([item], 'human', terminal) === bolded, on, why);
@@ -1523,7 +1526,7 @@ test('bold: never in --brief, --quiet or --json, whatever the terminal says', as
   }
 });
 
-test('labels: bold at the start of a line and after three or more spaces; a URL, a time, a path, a capital or a sentence is not', async () => {
+test('labels: one to three lowercase words and a colon, at the start of a line or after three or more spaces, sentence or not; a URL, a time, a path, a capital, a comma or four words is not', async () => {
   const lines = [
     'variable: ANTHROPIC_API_KEY',
     'file mode: 600   directory mode: 700',
@@ -1545,6 +1548,7 @@ test('labels: bold at the start of a line and after three or more spaces; a URL,
     'two spaces  only: do not make a second label',
     'size: 5 B   see: the second label',
     'size: 5 B and a sentence   note again: three words max here',
+    'the file was: gone', // three lowercase words: a label by the rule, though it reads as a sentence
   ];
   const out = await renderMode([{ ...OK_ITEM, lines }], 'human', { tty: true, env: {} });
   const shown = out.split('\n').slice(2, 2 + lines.length).map((l) => l.slice(4));
@@ -1569,6 +1573,7 @@ test('labels: bold at the start of a line and after three or more spaces; a URL,
     'two spaces  only: do not make a second label',
     `${BOLD('size:')} 5 B   ${BOLD('see:')} the second label`,
     `${BOLD('size:')} 5 B and a sentence   ${BOLD('note again:')} three words max here`,
+    `${BOLD('the file was:')} gone`,
   ]);
 });
 
@@ -1612,11 +1617,31 @@ test('mark: at most eight characters; a blank, non-string or control-bearing mar
   const family = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467); // five code points
   assert.equal(await line(family), `    ${family} s`);
   assert.equal(await line(` ${String.fromCodePoint(0x1f7e2)} `), `    ${String.fromCodePoint(0x1f7e2)} s`); // trimmed
-  const flagless = String.fromCodePoint(0x1f600).repeat(9); // cut by code point, never inside a surrogate pair
+  const flagless = String.fromCodePoint(0x1f600).repeat(9); // cut by character, never inside a surrogate pair
   assert.equal(await line(flagless), `    ${String.fromCodePoint(0x1f600).repeat(8)} s`);
   for (const dropped of ['', '   ', 7, {}, ['x'], null, true, 'a\nb', 'a\rb', 'a\tb', '\x1b[31m', 'x\x1b', '\x07', '\x7f', '\x85', 'a\u2028b', 'a\u202eb', 'a\u2066b']) {
     assert.equal(await line(dropped), '    s', JSON.stringify(dropped));
   }
+});
+
+test('mark: a control character or a bidi mark at either end drops the mark whole; it is not trimmed off and the rest kept', async () => {
+  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[1];
+  const dot = String.fromCodePoint(0x1f7e2);
+  for (const dropped of [`${dot}\n`, `\t${dot}`, `${dot}\t`, `\r${dot}`, `${dot}\u2028`, `\u2029${dot}`, `${dot}\x0b`, `\x0c${dot}`,
+    `\u200e${dot}`, `${dot}\u200f`, `\u061c${dot}`, `${dot}\u200e${dot}`]) {
+    assert.equal(await line(dropped), '    s', JSON.stringify(dropped));
+  }
+  assert.equal(await line(` ${dot}\u00a0`), `    ${dot} s`); // spaces (no-break included) are trimmed, as before
+});
+
+test('mark: the eight-character cap counts what a reader sees, so a joined emoji past the eighth code point is never split', async () => {
+  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[1];
+  const dot = String.fromCodePoint(0x1f7e2);
+  const family = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467, 0x200d, 0x1f466); // seven code points, one character
+  assert.equal(await line(`${dot}${dot}${family}`), `    ${dot}${dot}${family} s`);
+  assert.equal(await line(family.repeat(9)), `    ${family.repeat(8)} s`);
+  const flag = String.fromCodePoint(0x1f1fa, 0x1f1f8); // a flag is two regional indicators
+  assert.equal(await line(`${flag}${'a'.repeat(7)}b`), `    ${flag}${'a'.repeat(7)} s`);
 });
 
 test('--help: headings and command names are bold on a terminal, and a blank line follows each command block', () => {
@@ -1641,6 +1666,12 @@ test('--help: headings and command names are bold on a terminal, and a blank lin
   assert.ok(forced.stdout.includes(`\n  ${BOLD('inspect')}   Read-only.`));
   assert.ok(forced.stdout.includes(`\n  ${BOLD('apply')}     Mutating.`));
   assert.doesNotMatch(forced.stdout, /\x1b\[1m {2}/); // nothing else is bold: no usage line, no flag
+  assert.doesNotMatch(forced.stdout, /\x1b\[1m[-(0-9]/); // no flag, mode or exit code
+  // Every section that lists entries is spaced the same way, not only Commands.
+  for (const entry of [/^ {2}--yes, -y {3}apply/, /^ {2}--note <text>$/, /^ {2}--brief {5}one line/, /^ {2}--brief {14}Exactly/, /^ {2}1 {3}partial/, /^ {2}3 {3}could not/]) {
+    assert.equal(lines[at(entry) - 1], '', String(entry));
+  }
+  assert.equal(lines[at(/^ {2}--go {8}apply/) - 1], 'Flags:');
   const quiet = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: '1' } });
   assert.equal(quiet.stdout, forced.stdout); // FORCE_COLOR outranks NO_COLOR
   const off = run(['--help'], { env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: undefined } });
@@ -1666,6 +1697,7 @@ test('--help: a header shaped otherwise still prints as written, with only the b
       '  five      Outside the section, so no spacing and no bold.',
       '',
       'Notes: these are not a heading',
+      'from canned output instead (a lowercase start is not a heading):',
       'Trailing heading:',
       '  six      Not in Commands.',
     ].map((l) => `//${l ? ` ${l}` : ''}`);
@@ -1694,6 +1726,7 @@ test('--help: a header shaped otherwise still prints as written, with only the b
       '  five      Outside the section, so no spacing and no bold.',
       '',
       'Notes: these are not a heading',
+      'from canned output instead (a lowercase start is not a heading):',
       'Trailing heading:',
       '  six      Not in Commands.',
       '',
@@ -1704,9 +1737,94 @@ test('--help: a header shaped otherwise still prints as written, with only the b
     assert.ok(forced.includes(`\n  ${BOLD('two-part')}   An entry`));
     assert.ok(forced.includes(`\n  ${BOLD('four x')}  An entry`));
     assert.ok(forced.includes(`\n${BOLD('Trailing heading:')}\n`));
-    for (const unbolded of ['  three', 'Capital', 'five', 'Notes:', 'six']) {
+    for (const unbolded of ['  three', 'Capital', 'five', 'Notes:', 'from canned output', 'six']) {
       assert.ok(!new RegExp(`\\x1b\\[1m[^\\x1b]*${unbolded}`).test(forced), unbolded);
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--help: in every section a blank line follows each entry\'s block (flags, modes, exit codes); names outside Commands stay plain', () => {
+  const dir = tmp();
+  try {
+    const header = [
+      'spaced - every section that lists entries.',
+      '',
+      'Usage:',
+      '  spaced inspect <path>...      read-only',
+      '  spaced apply   <path>... [--go]',
+      '                                mutating',
+      '',
+      'Commands:',
+      '  inspect   Read-only.',
+      '  apply     Mutating.',
+      '',
+      'Output modes (all from one list):',
+      '  (default)   human    The human mode,',
+      '                       on two lines.',
+      '  --brief              One line per item.',
+      '  --quiet             The summary line only.',
+      '  Every text mode ends with a next: line, for example',
+      '    next: done  (x)',
+      '',
+      'Flags:',
+      '  --go        apply: do it.',
+      '  -y, --yes   apply: pre-confirm,',
+      '              wrapped onto a second line',
+      '              and a third.',
+      '  --note <text>',
+      '              a flag alone on its line, its text below.',
+      '  --out <dir>  a flag with a value.',
+      '  --json cannot be combined with --brief (prose, not an entry).',
+      '  --since, --day, --all',
+      '              a list of flags alone on its line is not an entry.',
+      '',
+      'Conventions:',
+      '  - a bullet is not an entry,',
+      '  - nor is the next one.',
+      '',
+      'Exit codes:',
+      '  0   all ok.',
+      '  1   partial,',
+      '      wrapped.',
+      '  2   usage error.',
+      'Back at the margin.',
+      '  3   outside a section, as written.',
+    ];
+    const src = readFileSync(TOOL_PATH, 'utf8').split('\n');
+    const end = src.findIndex((l, i) => i > 0 && !l.startsWith('//'));
+    const copy = path.join(dir, 'spaced.mjs');
+    writeFileSync(copy, [src[0], ...header.map((l) => `//${l ? ` ${l}` : ''}`), ...src.slice(end)].join('\n'));
+    const show = (env) => spawnSync(NODE, [copy, '--help'], { encoding: 'utf8', timeout: 10000, env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env } }).stdout;
+    const plain = show({});
+    const blankBefore = [ // the header lines a blank line now comes before, and nothing else changes
+      '  apply     Mutating.', '  --brief              One line per item.', '  --quiet             The summary line only.',
+      '  -y, --yes   apply: pre-confirm,', '  --note <text>', '  --out <dir>  a flag with a value.',
+      '  1   partial,', '  2   usage error.', 'Back at the margin.',
+    ];
+    assert.equal(plain, `${header.flatMap((l) => (blankBefore.includes(l) ? ['', l] : [l])).join('\n')}\n`);
+    let expected = plain;
+    for (const heading of ['Usage:', 'Commands:', 'Output modes (all from one list):', 'Flags:', 'Conventions:', 'Exit codes:']) {
+      expected = expected.replace(`\n${heading}\n`, `\n${BOLD(heading)}\n`);
+    }
+    expected = expected.replace('\n  inspect ', `\n  ${BOLD('inspect')} `).replace('\n  apply ', `\n  ${BOLD('apply')} `);
+    assert.equal(show({ FORCE_COLOR: '1' }), expected); // only the headings and the command names are bold
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a tool may declare its own LABEL, MARK_MAX, markOf or boldLabels above the runtime: the layout\'s names carry the runtime prefix', () => {
+  const dir = tmp();
+  try {
+    // Generic names a tool already uses (one adopted tool had its own LABEL), declared at the top level.
+    const own = ['boldEnabled', 'boldWith', 'boldLabels', 'markOf'].map((n) => `function ${n}() {}`)
+      .concat(['LABEL_WORD', 'LABEL', 'MARK_MAX', 'HELP_HEADING', 'HELP_COMMAND', 'HELP_ENTRY'].map((n) => `const ${n} = 0;`));
+    const copy = patchedCopy(dir, '// ---- mjs-tool runtime v', `${own.join('\n')}\n// ---- mjs-tool runtime v`);
+    const r = spawnSync(NODE, [copy, '--help'], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(r.status, 0, r.stderr); // a clash would be a SyntaxError as the module loads (exit 1)
+    assert.match(r.stdout, /^Usage:$/m);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

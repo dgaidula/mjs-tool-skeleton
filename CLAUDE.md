@@ -149,7 +149,7 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     guard is its last statement, so every top-level binding is initialised
     before `main()` runs), carries its own namespaced imports, holds no
     tool-specific code and no `<tool>` placeholder. A contract change bumps
-    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `27679d92…`.
+    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `f18f0696…` (`d7ee2574…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
 
 13. **Text output is frozen, except the `--brief` item line, which has one rule, and the human layout, which changed once.**
     The summary line is byte-identical to what 0.1.0 printed, the
@@ -200,37 +200,53 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     a long list”). The default human mode and `--help` carry it; `--brief`,
     `--quiet` and `--json` never do, byte for byte (a test holds them equal
     under FORCE_COLOR, and the 0.5.0 pass proved them identical to 0ef6970).
-    - **Bold** is SGR 1 on, 22 off, and only where `boldEnabled()` says so: a
-      TTY without a non-empty `NO_COLOR`, or a `FORCE_COLOR` that is non-empty
-      and not `0` or `false` (it outranks `NO_COLOR`, as in Node). Piped
-      output has no escape byte. Sources are in the comment above it.
+    - **Bold** is SGR 1 on, 22 off, and only where `runtimeBoldEnabled()` says
+      so: a TTY without a non-empty `NO_COLOR` and whose `TERM` is not `dumb`,
+      or a `FORCE_COLOR` that is non-empty and not `0` or `false` (it outranks
+      `NO_COLOR` and `TERM=dumb`, as in Node, whose `getColorDepth()` gives 2
+      colours for `TERM=dumb` and 16 once `FORCE_COLOR=1` is set). Piped output
+      has no escape byte. Sources are in the comment above it.
     - **Escape first, then bold.** Every item string goes through `printable()`
-      and only then into `bold()` or `boldLabels()`, so the text holds no ESC
+      and only then into `bold()` or `runtimeBoldLabels()`, so the text holds no ESC
       and cannot open, close or fake a bold span. The injection test holds that
       for every shape it can think of; never bold raw text.
     - **A label** is one to three lowercase words (digits after the first
       letter, dots, hyphens) ending in a colon that is followed by a space or
       the end of the line, at the start of the summary, a `lines` entry or the
       reason line, or after three or more spaces (`file mode: 600   directory
-      mode: 700`). A URL, a time, a Windows path, a capital or a sentence is
-      not one. The name after the glyph and the `summary:` label are bold too.
+      mode: 700`). A URL, a time, a Windows path, a capital, a comma or a fourth
+      word before the colon makes it not one; a sentence that opens with one to
+      three lowercase words and a colon is one (`the file was: gone` bolds
+      `the file was:`), and the tests say so. The name after the glyph and the
+      `summary:` label are bold too.
       `next:` is not.
     - **Layout:** a blank line between items and exactly one before `summary:`,
       colour or not; nothing before the first item.
     - **`item.mark`** is a short string (a coloured dot, say) the tool sets,
-      printed first on the summary line as `    <mark> <summary>`. At most
-      eight characters (code points) kept; a mark that is not a string, is blank
-      or holds a control character (TAB included) is dropped whole. It is never
+      printed first on the summary line as `    <mark> <summary>`. A mark that
+      is not a string, holds a control character (TAB included) or a bidi mark
+      (U+200E, U+200F, U+061C) anywhere, its ends included (checked before the
+      trim), or is blank once trimmed, is dropped whole; at most eight
+      characters are kept, counted as grapheme clusters (`Intl.Segmenter`), so
+      a joined emoji is never cut inside. It is never
       in `--brief`, `--quiet` or `--json` (`jsonItem()` does not copy it), so the
       facts it stands for belong in `data`, and the marks of one tool should
       share a column width.
     - **`--help`:** a heading is a capitalised phrase ending in a colon, on its
       own line (`Usage:`, `Output modes (all rendered from the same item
-      objects):`), and is bold. In the `Commands:` section an entry is two
-      spaces, a lowercase name (up to three words), two or more spaces and its
-      text; the name is bold and a blank line follows each entry’s block. A
-      header shaped otherwise prints as written. The skeleton’s own header keeps
-      each heading on one line for this reason.
+      objects):`), and is bold; it opens a section, which ends at the next
+      heading or a line back at the margin. In every section an entry is two
+      spaces, a first token, two or more spaces and its text: in `Commands:` a
+      lowercase name (up to three words), which is bold; elsewhere a flag or a
+      comma list of flags, each with any `<value>` or `[value]` (`-y, --yes`,
+      `--note <text>`, which may also stand alone with its text below), or one
+      word (a mode, an exit code), which stays plain (Dan, 2026-11-06: “can you
+      put the extra line break after an item in the other sections, too? like
+      flags, etc. it just helps a human to read better and track across the
+      page.”). A blank line follows each entry’s block (up to the next entry or
+      the end of the section), bold or not. A header shaped otherwise prints as
+      written. The skeleton’s own header keeps each heading on one line for this
+      reason.
     - **Tests:** `node --test` sets `FORCE_COLOR=1` for its files on a terminal,
       so both test files delete `FORCE_COLOR` and `NO_COLOR` before they spawn
       anything. Keep that in any new test file that runs a tool in human mode.

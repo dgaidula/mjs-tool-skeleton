@@ -109,10 +109,13 @@ on it before you touch it.
   comment block with no blank line between. A `/** … */` header, or a blank
   line after the shebang, gives an empty `--help`. Since 0.5.0 it also sets the
   text out: a heading (a capitalised phrase ending in a colon, alone on its
-  line) is bold on a terminal, and in the `Commands:` section each entry (two
-  spaces, a lowercase name, two or more spaces, the text) has a bold name and a
-  blank line after its block. Keep a heading on one line (`Output modes (all
-  rendered from the same item objects):`, not wrapped) and write command
+  line) is bold on a terminal, and in every section each entry (two spaces, a
+  first token, two or more spaces, the text) has a blank line after its block.
+  The token is a lowercase command name in `Commands:`, which is bold there,
+  and elsewhere a flag or a comma list of flags with any `<value>` (`-y,
+  --yes`, `--note <text>`, which may stand alone with its text below), a mode
+  name or an exit code, which stays plain. Keep a heading on one line (`Output
+  modes (all rendered from the same item objects):`, not wrapped) and write
   entries in that shape; a header shaped otherwise prints as written.
 
 - **Rename in its own commit.** A `.js` → `.mjs` rename plus a heavy rewrite
@@ -959,24 +962,46 @@ run of 192 invocations against the 0.4.1 runtime proved it). What changes is
 the default human mode and `--help`: a blank line between items, bold item
 names and labels on a terminal, an optional per-item `mark`, and spaced,
 bold-headed help. A revision has no number of its own; it is the skeleton
-release and the block’s sha256, `27679d92…` for 0.5.0 (the 0.4.x block was
-`caf3bd4c…`). The fence test’s “edited” reading of an adopted tool is therefore
-expected until it re-syncs.
+release and the block’s sha256 (the 0.4.x block was `caf3bd4c…`, or
+`1f1c5c19…` with the newline). For 0.5.0, as §6 asks of a pinned value:
+
+- the block alone, from the first character of the opening line through the
+  last of the closing line (the form `test/new-tool.test.mjs` pins):
+  `f18f06964de30ba391069e8c42d215a2a193cfa9dd51d21640bfc4cfb7f571dc`;
+- the block and the newline after its closing line (the form most adopted
+  fence tests pin, those that hash `fence + "\n"`):
+  `d7ee25749e10993323934bcd425e5fe8d35ed82a659884739ac93233ed503ef8`.
+
+The fence test’s “edited” reading of an adopted tool is therefore expected
+until it re-syncs.
 
 1. **Replace the fence wholesale**, as step 1 above. The block adds names and
-   drops none: `boldEnabled`, `boldWith`, `LABEL_WORD`, `LABEL`, `boldLabels`,
-   `MARK_MAX`, `markOf`, `HELP_HEADING`, `HELP_COMMAND`. A top-level
-   redeclaration of one fails at load; search the tool’s own code first.
+   drops none: `runtimeBoldEnabled`, `runtimeBoldWith`, `RUNTIME_LABEL_WORD`,
+   `RUNTIME_LABEL`, `runtimeBoldLabels`, `RUNTIME_MARK_MAX`, `runtimeMarkOf`,
+   `RUNTIME_HELP_HEADING`, `RUNTIME_HELP_COMMAND`, `RUNTIME_HELP_ENTRY`. They
+   carry the runtime’s prefix because a block pasted over code it has never
+   seen must not take a name the tool already has: a draft of 0.5.0 declared a
+   bare `LABEL`, which one adopted tool declares too, and that tool would not
+   have loaded. A scan of every adopted tool found none of these names
+   declared. A top-level redeclaration of any fence name fails at load (a
+   `SyntaxError`, exit 1, before the runtime can turn it into 3), so before you
+   commit the swap, run `node --check` on the re-synced file and search the
+   tool’s own code (above and below the fence) for a top-level declaration of
+   each of the names above; a hit is a rename in the tool, never an edit of
+   the fence.
    `helpText()` now formats what it reads, so a tool that prints its own help
    some other way is unaffected.
 
 2. **Move the fence test** to the new sha256 and name the release (0.5.0), as
-   step 2 above.
+   step 2 above. Take the value in the form the test hashes: `f18f0696…` for
+   the block alone, `d7ee2574…` for the block and its newline (both in full
+   above). A test that pins the wrong form stays red.
 
 3. **Update the tests that pin human output.** Each item block is followed by a
    blank line (the last item’s is the one before `summary:`, as before), so a
    golden human run gains one empty line between items; a test that pins
-   `--help` text sees the blank lines after each command block.
+   `--help` text sees a blank line after each entry’s block in every section
+   (commands, flags, output modes, exit codes).
 
 4. **Clear `FORCE_COLOR` and `NO_COLOR` in every test file that runs the tool
    in human mode or with `--help`.** On a terminal `node --test` sets
@@ -990,7 +1015,20 @@ expected until it re-syncs.
 
 5. **Update the tool’s own docs.** Paste the current `AGENT-USAGE.md` block over
    the old one, and copy the skeleton header’s human-mode line if the tool’s
-   `--help` repeats the output modes.
+   `--help` repeats the output modes. Then read the tool’s `--help` at a
+   terminal (or under `FORCE_COLOR=1`) with the header as §2 describes it:
+   - Keep each heading on one line. A heading wrapped over two lines (`Output
+     modes (all rendered from the same item objects, so they can never` /
+     `disagree):`, as many adopted headers have it) is no heading: it prints
+     plain, and its section gets no spacing. Re-wrap it onto one line, shorten
+     the parenthetical if it runs long.
+   - A line at the margin that starts with a capital and ends in a colon is a
+     heading and prints bold, so a prose lead-in such as `Each side is flagged
+     when the certificate:` turns bold. If that reads badly, re-word it so it
+     does not end in a colon, or indent it.
+   - A list whose first token is followed by only one space, or a wrapped
+     comma list of flags, gets no spacing; put two spaces after the token if
+     the list should be spaced.
 
 6. **Marks are optional.** A tool that wants one sets `item.mark` where it builds
    the item (not in `verdict()`, which stays the source of verdicts): one short
