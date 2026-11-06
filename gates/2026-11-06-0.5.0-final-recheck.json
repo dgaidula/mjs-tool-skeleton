@@ -1,0 +1,91 @@
+{
+  "tool": "mjs-tool-skeleton",
+  "run": "final closure re-check (scoped): c795661..c295659 on main against gates/2026-11-06-0.5.0-help-gate.json (F1, FU4, FU5) and Dan’s three asks of 2026-11-06",
+  "date": "2026-11-06",
+  "verdict": "CLOSED WITH FOLLOW-UPS",
+  "scope": "c795661..c295659 is one commit touching ADOPTING.md, CHANGELOG.md, CLAUDE.md, README.md, bin/new-tool.mjs (header lines 40-43 and the fence), skeleton/tool.mjs (fence only), skeleton/tool.test.mjs, test/new-tool.test.mjs. Nothing outside the brief. The diff holds no local path or private tool name.",
+  "suite": {
+    "command": "node --test",
+    "baseline": "114/114 at c795661 (git archive copy)",
+    "pass": 119,
+    "fail": 0,
+    "runs": "piped 119/119; on a pty (script -q /dev/null … < /dev/null) 119/119; TERM=dumb 119/119"
+  },
+  "closure": {
+    "F1": {
+      "status": "closed",
+      "evidence": "new-tool --help under FORCE_COLOR=1 has exactly seven bold spans: new-tool, Usage:, Exit codes:, 0, 1, 2, 3; the re-wrapped line reads “DEL and C1 controls as caret text, so npm’s values are checked through” (no colon at its end). The new scaffolder test pins the spans and every blank line the help adds; M13 (the old wrap put back) and M14 (a heading-shaped line added mid-paragraph) both go red."
+    },
+    "FU4": {
+      "status": "closed",
+      "evidence": "The skeleton’s --help bolds `(default)   human` as one span. Across the 106 distinct adopted headers rendered under the c795661 and c295659 fences, 72 `(default)   human` lines gain the second key; M7 (rule reverted), M9 (capital allowed) and M10 (two extra keys) go red."
+    },
+    "FU5": {
+      "status": "closed",
+      "evidence": "A header opening with `Usage:` prints one blank line, then the heading; M11 (the “something comes before it” guard dropped) goes red."
+    },
+    "danOpeningBlank": {
+      "status": "done",
+      "evidence": "Human output opens with one blank line when there are items; with none it keeps the one blank line before summary: (test row; M2, the blank pushed unconditionally, goes red). --brief and --quiet never open with one (M3 goes red). Over the identity matrix every human change against c795661 is exactly that blank line plus the bold next: label."
+    },
+    "danNextBold": {
+      "status": "done",
+      "evidence": "In 36 bold human runs (FORCE_COLOR, FORCE_COLOR with NO_COLOR and TERM=dumb, a pty) the next: line carries exactly one bold pair, round the label; no escape byte follows it, including a $'…'-quoted path holding a line separator and a literal ESC [ 1 m (the token stays backslash text). --brief and --quiet never bold it. M4, M5 (whole line bold) and M6 (bold allowed outside human) go red."
+    },
+    "danFirstEntryUnderProse": {
+      "status": "done",
+      "evidence": "An entry directly under margin prose gets a blank line before it (test row; M12 goes red). Over the adopted headers this adds 58 blank lines and changes no non-blank line."
+    }
+  },
+  "authorClaims": {
+    "tests": "114 -> 119: reproduced.",
+    "fenceHash": "bare 6e8cd8a1186090d9d92ab8ee12faccea9eb938b8c7620b6f346710e5a06765c2 and with the newline 37931f3a1fee824688b683172c238a15af81cbc4575a97fa4574684a2492e81c in skeleton/tool.mjs and bin/new-tool.mjs: reproduced; ADOPTING.md names both in full, CHANGELOG and CLAUDE.md name the prefixes. A fresh scaffold carries the same block and its own 78 tests pass.",
+    "byteIdentity": "reproduced. The c295659 skeleton with its own fence and with the 0ef6970 fence swapped in, run in turn from one path with one package.json: 17 argument sets (inspect and apply over a file, an empty file, a directory, a missing path, a protected file and a name holding U+2028, ESC and a quote; --go, --yes, --note good and blank; usage errors) x 4 modes x 5 environments (piped, FORCE_COLOR=1, NO_COLOR=1, TERM=dumb, FORCE_COLOR with NO_COLOR and TERM=dumb) plus a pty: 408 runs a side. The 306 --brief/--quiet/--json runs are byte-identical in stdout, stderr and exit (Node’s own NO_COLOR-vs-FORCE_COLOR warning carries a pid, normalised); in the 102 human runs stderr and exit are identical too. The same against the c795661 fence. The scaffolder the same way (6 argument sets incl. a scaffold, a refusal and usage errors, x 4 modes x 3 environments, 96 runs a side): 72 non-human runs identical, human stderr and exit identical.",
+    "noItems": "reproduced by the test row and M2; no CLI path of the template reaches zero items.",
+    "nextBoldNeverInQuotedToken": "reproduced (see danNextBold).",
+    "collisionScan": "reproduced: the 63 top-level names of the c295659 fence against 129 adopted fenced files: no declaration clash (one false hit, an import path string); every file with the new block swapped in passes node --check."
+  },
+  "adoptedHelp": "106 distinct adopted headers rendered under the c795661 and c295659 fences, plain and FORCE_COLOR=1: no non-blank line changes, plain equals forced-minus-bold, the bold span count per header is unchanged; 58 blank lines added (first entry under margin prose, most of them the old two-line Output modes heading of the help gate’s FU2), 88 bold spans widened (72 `(default)   human`, 16 other second keys, see FU2).",
+  "mutants": {
+    "spec": "14 hand-written mutants: M1-M12 edit the fence in skeleton/tool.mjs and run skeleton/tool.test.mjs alone (the scaffolder test pins the fence hash and would kill any fence edit by itself); M13-M14 edit the scaffolder header and run test/new-tool.test.mjs",
+    "result": "13 killed, 1 survived (M8, FU1)",
+    "quote": [
+      "warn survived, exit 0, 9.1s  M8  (nothing noticed: a second key needs only one space before it)",
+      "ok 16 files + git unchanged  real tree",
+      "summary: ok=16 warn=1 skip=0 refuse=0 fail=0"
+    ]
+  },
+  "regressions": "None found.",
+  "tree": "git status (with --ignored) and a sha256 of every tracked file recorded before the first run and after the last: start equals end at c295659. Every copy, probe and gate-kit scratch lived in the gate’s own scratch folder.",
+  "sources": "Read directly: the c795661..c295659 diff, helpText() and report() at c295659, CLAUDE.md invariants 12, 13 and 15, the help gate receipt’s findings (for the acceptance lines), every output quoted here. The fixer’s claims were taken from the brief and re-run, not read from a report.",
+  "note": "Public receipt: adopted tools are private and are counted, not named.",
+  "findings": [],
+  "notBlocking": [
+    {
+      "id": "FU1",
+      "summary": "Mutant M8 survives: letting a single space (not two or more) set the second left-column key off from the first leaves the suite green. The rule says “two or more spaces set that word off on both sides”, and under M8 a line such as `  alpha beta   text` becomes an entry with `alpha beta` bold, where c295659 prints it as plain prose; the new test covers the right-hand side (`  0   all ok.`) but no row has one space on the left.",
+      "location": "skeleton/tool.mjs RUNTIME_HELP_ENTRY (the `(?: {2,}[a-z][a-z0-9-]*)?` group); skeleton/tool.test.mjs, the “second left-column key” test",
+      "repro": "gate-kit mutants with find `(?: {2,}[a-z][a-z0-9-]*)?` replace `(?: +[a-z][a-z0-9-]*)?` -> “warn survived, exit 0  M8”; a probe header line `  alpha beta   one space between the first two words.` under Flags: prints bold `alpha beta` under the mutant, plain at c295659.",
+      "acceptance": "Add `  alpha beta   text` (one space between the words) to the second-key test’s header, asserted not bold and not an entry; M8 then goes red. Test-only: no hash moves.",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "unlikely",
+      "confidence": "high",
+      "cause": "The test pins the right-hand two-space guard but not the left-hand one.",
+      "needsDesign": false
+    },
+    {
+      "id": "FU2",
+      "summary": "One adopted header (one of the 106 distinct headers rendered) lists column names as `  #  date  agent / model = …`; under the new second-key rule `#  date` is bold and the rest of the list plain (c795661 bolded `#` alone). Both read as half a key; the rule does what the docs say, so this is the adopter’s wording, like the help gate’s FU1.",
+      "location": "one adopted tool’s header (private; named in the orchestrator’s notes); RUNTIME_HELP_ENTRY",
+      "repro": "Render that header under the c795661 and c295659 fences: the bold span on that line goes from `#` to `#  date`; 16 such non-`(default)   human` second keys across the adopted headers, the other 15 being a key followed by a verdict or a state column.",
+      "acceptance": "At that tool’s next re-sync, write the column list as prose (one space between names) or as one entry per column; or accept as documented.",
+      "blocking": false,
+      "severity": "info",
+      "likelihood": "likely",
+      "confidence": "high",
+      "cause": "A column-name list shaped like a two-key entry.",
+      "needsDesign": false
+    }
+  ]
+}
