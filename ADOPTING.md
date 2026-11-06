@@ -108,13 +108,14 @@ on it before you touch it.
   line 2 down to the first line that isn’t one: a shebang on line 1, then the
   comment block with no blank line between. A `/** … */` header, or a blank
   line after the shebang, gives an empty `--help`. Since 0.5.0 it also sets the
-  text out: a heading (a capitalised phrase ending in a colon, alone on its
-  line) is bold on a terminal, and in every section each entry (two spaces, a
-  first token, two or more spaces, the text) has a blank line after its block.
-  The token is a lowercase command name in `Commands:`, which is bold there,
-  and elsewhere a flag or a comma list of flags with any `<value>` (`-y,
-  --yes`, `--note <text>`, which may stand alone with its text below), a mode
-  name or an exit code, which stays plain. Keep a heading on one line (`Output
+  text out: a heading (a line at the left margin that starts with a capital and
+  ends in a colon) is bold with a blank line after it, and in every section
+  each entry (two spaces, a first token, two or more spaces, the text) has its
+  token in bold and a blank line after its block. The token is a lowercase
+  command name in `Commands:`, and elsewhere a flag or a comma list of flags
+  with any `<value>` (`-y, --yes`, `--note <text>`, which may stand alone with
+  its text below), a mode name, an exit code or a name. In `Usage:` the tool
+  name and subcommand of each line are bold. Keep a heading on one line (`Output
   modes (all rendered from the same item objects):`, not wrapped) and write
   entries in that shape; a header shaped otherwise prints as written.
 
@@ -967,10 +968,10 @@ release and the block’s sha256 (the 0.4.x block was `caf3bd4c…`, or
 
 - the block alone, from the first character of the opening line through the
   last of the closing line (the form `test/new-tool.test.mjs` pins):
-  `f18f06964de30ba391069e8c42d215a2a193cfa9dd51d21640bfc4cfb7f571dc`;
+  `cd2bde6f39ab4249c2d4e15329a58d616c509ade2563a37658e780f1a4a0adbd`;
 - the block and the newline after its closing line (the form most adopted
   fence tests pin, those that hash `fence + "\n"`):
-  `d7ee25749e10993323934bcd425e5fe8d35ed82a659884739ac93233ed503ef8`.
+  `4486ab45dc0103dedb5cdb03409fdc0416afd1c6612f23a59bb20f0d63c219fa`.
 
 The fence test’s “edited” reading of an adopted tool is therefore expected
 until it re-syncs.
@@ -978,7 +979,8 @@ until it re-syncs.
 1. **Replace the fence wholesale**, as step 1 above. The block adds names and
    drops none: `runtimeBoldEnabled`, `runtimeBoldWith`, `RUNTIME_LABEL_WORD`,
    `RUNTIME_LABEL`, `runtimeBoldLabels`, `RUNTIME_MARK_MAX`, `runtimeMarkOf`,
-   `RUNTIME_HELP_HEADING`, `RUNTIME_HELP_COMMAND`, `RUNTIME_HELP_ENTRY`. They
+   `RUNTIME_HELP_HEADING`, `RUNTIME_HELP_COMMAND`, `RUNTIME_HELP_FLAG`,
+   `RUNTIME_HELP_ENTRY`, `RUNTIME_HELP_USAGE`. They
    carry the runtime’s prefix because a block pasted over code it has never
    seen must not take a name the tool already has: a draft of 0.5.0 declared a
    bare `LABEL`, which one adopted tool declares too, and that tool would not
@@ -993,15 +995,17 @@ until it re-syncs.
    some other way is unaffected.
 
 2. **Move the fence test** to the new sha256 and name the release (0.5.0), as
-   step 2 above. Take the value in the form the test hashes: `f18f0696…` for
-   the block alone, `d7ee2574…` for the block and its newline (both in full
+   step 2 above. Take the value in the form the test hashes: `cd2bde6f…` for
+   the block alone, `4486ab45…` for the block and its newline (both in full
    above). A test that pins the wrong form stays red.
 
 3. **Update the tests that pin human output.** Each item block is followed by a
    blank line (the last item’s is the one before `summary:`, as before), so a
    golden human run gains one empty line between items; a test that pins
-   `--help` text sees a blank line after each entry’s block in every section
-   (commands, flags, output modes, exit codes).
+   `--help` text sees a blank line after every heading and after each entry’s block
+   in every section (commands, flags, output modes, exit codes), a block of its
+   own for prose at an entry’s indent, and the entry names and usage names in
+   bold on a terminal.
 
 4. **Clear `FORCE_COLOR` and `NO_COLOR` in every test file that runs the tool
    in human mode or with `--help`.** On a terminal `node --test` sets
@@ -1022,10 +1026,20 @@ until it re-syncs.
      `disagree):`, as many adopted headers have it) is no heading: it prints
      plain, and its section gets no spacing. Re-wrap it onto one line, shorten
      the parenthetical if it runs long.
-   - A line at the margin that starts with a capital and ends in a colon is a
-     heading and prints bold, so a prose lead-in such as `Each side is flagged
-     when the certificate:` turns bold. If that reads badly, re-word it so it
-     does not end in a colon, or indent it.
+   - A line at the margin that starts with a capital and ends in a colon, with no
+     other colon in it, is a heading: it prints bold with a blank line after it
+     (Dan, 2026-11-06, wanted a section’s lead-in to read like a header). A
+     lead-in such as `Each side is flagged when the certificate:` turns bold
+     on purpose. To get one, put the lead-in on its own line and end it with a
+     colon (`Creating a new key is the person’s job:`, the prose on the next
+     line); to keep a line plain, do not end it in a colon, or indent it. A
+     wrapped sentence whose last line starts with a capital and ends in a colon
+     is read as a heading too, so end it another way.
+   - Entries are bold in every section, so put the key of a list in the left
+     column, two spaces from its text (`  Anthropic   https://…`). A prose
+     line at an entry’s indent (a closing paragraph, `--json cannot be combined
+     with --brief or --quiet.`) is no entry and gets a blank line before it;
+     put a blank line before it in the header if it should stand apart already.
    - A list whose first token is followed by only one space, or a wrapped
      comma list of flags, gets no spacing; put two spaces after the token if
      the list should be spaced.

@@ -944,23 +944,31 @@ function environmentError(message) {
 
 // Read the leading comment block of THIS file as help text (contact-sheet-cli
 // pattern): skip the shebang, take the contiguous `//` lines, strip the `// `.
-// The text is then set out for reading. A heading is a line that is a
-// capitalised phrase ending in a colon (`Usage:`, `Output modes (all rendered
-// from one list):`) and is bold. It opens a section, which ends at the next
-// heading or a line back at the left margin. In a section an entry is a line of
-// two spaces, a first token, two or more spaces and its text; the token is a
-// flag or a comma-separated list of them (`--brief`, `-y, --yes`), each with
-// any `<value>` or `[value]` after it, or one word (a mode, an exit code). One
-// flag may also stand alone, its text on the lines below (`--note <text>`).
-// In the `Commands:` section an entry is two spaces, a lowercase command name
-// (up to three words), two or more spaces and its text, and the name is bold;
-// elsewhere the token stays plain. A blank line follows each entry's block (the
-// lines up to the next entry or the end of the section). The blank lines are
-// always added, the bold only where runtimeBoldEnabled() allows it. A header
-// shaped otherwise prints as written.
-const RUNTIME_HELP_HEADING = /^[A-Z][A-Za-z ]*(?: \([^()]*\))?:$/;
+// The text is then set out for reading. A heading is a line at the left margin
+// that starts with a capital and ends in a colon, with no other colon in it
+// (`Usage:`, `Output modes (all rendered from one list):`, or a lead-in written
+// as one: `Creating a new key is the person's job:`). It is bold and a blank
+// line follows it. It opens a section, which ends at the next heading or a line
+// back at the left margin. An entry, in a section or under a line of prose, is
+// a line of two spaces, a first token, two or more spaces and its text; the
+// token is bold, the text is not. The token is a flag or a comma-separated list
+// of them (`--brief`, `-y, --yes`), each with any `<value>` or `[value]` after
+// it, or one word (a mode, an exit code, a name). One flag may also stand alone,
+// its text on the lines below (`--note <text>`). In the `Commands:` section the
+// token is a lowercase command name (up to three words). A blank line follows
+// each entry's block (the lines up to the next entry or the end of the section).
+// A line of two spaces that is not an entry (prose at an entry's indent, a flag
+// with one space after it) is a block of its own, with a blank line before it.
+// In `Usage:` the tool name (the first token of the first usage line) and the
+// lowercase words after it are bold at the start of each line that begins with
+// that name; no blank lines come between usage lines. The blank lines are always
+// added, the bold only where runtimeBoldEnabled() allows it. A header shaped
+// otherwise prints as written.
+const RUNTIME_HELP_HEADING = /^[A-Z][^:]*:$/;
 const RUNTIME_HELP_COMMAND = /^ {2}([a-z][a-z0-9._:-]*(?: [a-z][a-z0-9._:-]*){0,2})( {2,}\S.*)$/;
-const RUNTIME_HELP_ENTRY = /^ {2}(?:-[^\s,]+(?: <[^<>]+>| \[[^[\]]+\])*(?:(?:, -[^\s,]+(?: <[^<>]+>| \[[^[\]]+\])*)* {2,}\S.*)?|[^\s-]\S* {2,}\S.*)$/;
+const RUNTIME_HELP_FLAG = '-[^\\s,]+(?: <[^<>]+>| \\[[^[\\]]+\\])*';
+const RUNTIME_HELP_ENTRY = new RegExp(`^ {2}(${RUNTIME_HELP_FLAG}$|${RUNTIME_HELP_FLAG}(?:, ${RUNTIME_HELP_FLAG})*(?= {2,}\\S)|[^\\s-]\\S*(?= {2,}\\S))(.*)$`);
+const RUNTIME_HELP_USAGE = /^ {2}(\S+)((?: [a-z][a-z0-9_-]*){0,3})(?= |$)/;
 
 function helpText() {
   const lines = runtimeFs.readFileSync(SCRIPT_PATH, 'utf8').split('\n');
@@ -972,27 +980,46 @@ function helpText() {
   const bold = runtimeBoldWith(runtimeBoldEnabled());
   const out = [];
   let section = null; // the heading of the section this line is in, null outside one
-  let inEntry = false; // inside an entry's block, which close() ends with a blank line
-  const close = () => {
-    if (inEntry && out.at(-1) !== '') out.push('');
-    inEntry = false;
-  };
+  let block = null; // 'entry' or 'prose' once a line of two spaces has begun a block in the section
+  let tool = null; // in Usage:, the first token of the first usage line
+  let afterHeading = false; // the line after a heading gets a blank line before it
+  const blank = () => { if (out.at(-1) !== '') out.push(''); };
   for (const l of raw) {
+    if (afterHeading && l !== '') blank();
+    afterHeading = false;
     const heading = RUNTIME_HELP_HEADING.test(l);
     if (heading || (l !== '' && !l.startsWith(' '))) {
-      close();
+      if (block !== null) blank();
+      block = null;
+      tool = null;
       section = heading ? l : null;
     }
     if (heading) {
       out.push(bold(l));
+      afterHeading = true;
       continue;
     }
-    const command = section === 'Commands:' ? RUNTIME_HELP_COMMAND.exec(l) : null;
-    if (command || (section !== null && section !== 'Commands:' && RUNTIME_HELP_ENTRY.test(l))) {
-      close();
-      out.push(command ? `  ${bold(command[1])}${command[2]}` : l);
-      inEntry = true;
+    if (section === 'Usage:') {
+      const usage = RUNTIME_HELP_USAGE.exec(l);
+      if (usage && (tool === null || usage[1] === tool)) {
+        tool = usage[1];
+        const name = usage[1] + usage[2];
+        out.push(`  ${bold(name)}${l.slice(2 + name.length)}`);
+      } else {
+        out.push(l);
+      }
+      continue;
+    }
+    const entry = (section === 'Commands:' ? RUNTIME_HELP_COMMAND : RUNTIME_HELP_ENTRY).exec(l);
+    if (entry) {
+      if (block !== null) blank();
+      out.push(`  ${bold(entry[1])}${entry[2]}`);
+      block = 'entry';
     } else {
+      if (/^ {2}\S/.test(l)) {
+        if (block === 'entry') blank();
+        block = 'prose';
+      }
       out.push(l);
     }
   }

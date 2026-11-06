@@ -1644,41 +1644,63 @@ test('mark: the eight-character cap counts what a reader sees, so a joined emoji
   assert.equal(await line(`${flag}${'a'.repeat(7)}b`), `    ${flag}${'a'.repeat(7)} s`);
 });
 
-test('--help: headings and command names are bold on a terminal, and a blank line follows each command block', () => {
+test('--help: a heading is bold with a blank line after it, every entry name is bold, a usage line bolds its tool and subcommand, and a blank line separates the blocks', () => {
   const plain = run(['--help'], { env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined } });
   assert.doesNotMatch(plain.stdout, /\x1b/);
   const lines = plain.stdout.split('\n');
   const at = (re) => lines.findIndex((l) => re.test(l));
+  const headings = ['Usage:', 'Commands:', 'Output modes (all rendered from the same item objects):', 'Flags:', 'Conventions that make it safe unattended:', 'Exit codes:'];
+  for (const heading of headings) assert.equal(lines[lines.indexOf(heading) + 1], '', heading); // a blank line after every heading
   const inspect = at(/^ {2}inspect {2,}\S/);
   const apply = at(/^ {2}apply {2,}\S/);
-  assert.ok(inspect > 0 && apply > inspect);
-  assert.equal(lines[inspect - 1], 'Commands:'); // no blank between a heading and its first entry
+  assert.equal(lines[inspect - 2], 'Commands:');
   assert.equal(lines[apply - 1], ''); // the blank closing inspect's block
   assert.match(lines[apply - 2], /writes\. `--go` is ignored here with a warning\.$/); // inspect's last text line, then the blank
   assert.equal(lines[at(/^Output modes/) - 1], ''); // the blank closing apply's block, once
   assert.doesNotMatch(plain.stdout, /\n\n\n/);
-
-  const forced = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: undefined } });
-  assert.equal(unbold(forced.stdout), plain.stdout);
-  for (const heading of ['Usage:', 'Commands:', 'Flags:', 'Exit codes:', 'Output modes (all rendered from the same item objects):']) {
-    assert.ok(forced.stdout.includes(`\n${BOLD(heading)}\n`), heading);
-  }
-  assert.ok(forced.stdout.includes(`\n  ${BOLD('inspect')}   Read-only.`));
-  assert.ok(forced.stdout.includes(`\n  ${BOLD('apply')}     Mutating.`));
-  assert.doesNotMatch(forced.stdout, /\x1b\[1m {2}/); // nothing else is bold: no usage line, no flag
-  assert.doesNotMatch(forced.stdout, /\x1b\[1m[-(0-9]/); // no flag, mode or exit code
-  // Every section that lists entries is spaced the same way, not only Commands.
+  // A usage line stays tight; only the heading is followed by a blank.
+  assert.equal(lines.slice(at(/^Usage:/) + 2, at(/^Commands:/) - 1).filter((l) => l === '').length, 0);
+  // Prose at an entry's indent is a block of its own: a blank before it, none inside it.
+  assert.equal(lines[at(/^ {2}Every text mode then ends/) - 1], '');
+  assert.notEqual(lines[at(/^ {2}In --json the same advice/) - 1], '');
+  assert.notEqual(lines[at(/^ {2}--json cannot be combined/) - 1], '');
   for (const entry of [/^ {2}--yes, -y {3}apply/, /^ {2}--note <text>$/, /^ {2}--brief {5}one line/, /^ {2}--brief {14}Exactly/, /^ {2}1 {3}partial/, /^ {2}3 {3}could not/]) {
     assert.equal(lines[at(entry) - 1], '', String(entry));
   }
-  assert.equal(lines[at(/^ {2}--go {8}apply/) - 1], 'Flags:');
+  assert.equal(lines[at(/^ {2}--go {8}apply/) - 1], '');
+
+  const forced = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: undefined } });
+  assert.equal(unbold(forced.stdout), plain.stdout);
+  const spans = [...forced.stdout.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
+  const tool = /^ {2}(\S+) inspect /m.exec(plain.stdout)[1]; // the tool's name as its header spells it
+  const names = [`${tool} inspect`, `${tool} apply`, tool, 'inspect', 'apply', '(default)', '--brief', '--json', '--quiet',
+    '--go', '--yes, -y', '--note <text>', '--help, -h', '--version', '--cheat', '0', '1', '2', '3'];
+  for (const s of spans) assert.ok(headings.includes(s) || names.includes(s), `unexpected bold span: ${s}`); // never a description
+  for (const s of [...headings, ...names]) assert.ok(spans.includes(s), `not bold: ${s}`);
+  assert.ok(forced.stdout.includes(`\n  ${BOLD(`${tool} inspect`)} <path>...`)); // the tool and subcommand, not the arguments
+  assert.ok(forced.stdout.includes(`\n  ${BOLD(`${tool} apply`)}   <path>...`));
+  assert.ok(forced.stdout.includes(`\n  ${BOLD(tool)} --help | --version | --cheat\n`));
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('inspect')}   Read-only.`));
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('--yes, -y')}   apply:`)); // the whole left column, comma and all
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('--note <text>')}\n`)); // a flag alone on its line
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('3')}   could not run`));
   const quiet = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: '1' } });
   assert.equal(quiet.stdout, forced.stdout); // FORCE_COLOR outranks NO_COLOR
   const off = run(['--help'], { env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: undefined } });
   assert.equal(off.stdout, plain.stdout);
 });
 
-test('--help: a header shaped otherwise still prints as written, with only the blank lines added', () => {
+// Run --help on a copy of the template whose header is `header` (lines without their `// `), with the
+// colour variables cleared and then `env` laid over them.
+function helpWith(dir, name, header, env = {}) {
+  const src = readFileSync(TOOL_PATH, 'utf8').split('\n');
+  const end = src.findIndex((l, i) => i > 0 && !l.startsWith('//'));
+  const copy = path.join(dir, `${name}.mjs`);
+  writeFileSync(copy, [src[0], ...header.map((l) => `//${l ? ` ${l}` : ''}`), ...src.slice(end)].join('\n'));
+  return spawnSync(NODE, [copy, '--help'], { encoding: 'utf8', timeout: 10000, env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env } }).stdout;
+}
+
+test('--help: a header shaped otherwise still prints as written, with only blank lines and bold added; a mid-line colon, a lowercase start and an indented line are not headings', () => {
   const dir = tmp();
   try {
     const header = [
@@ -1692,25 +1714,23 @@ test('--help: a header shaped otherwise still prints as written, with only the b
       '  three',
       '      a name alone on its line is not an entry.',
       '  four x  An entry whose name is two words.',
-      '  Capital  A capital is not a command name, so this is part of the block above.',
+      '  Capital  A capital is not a command name, so this is prose at the entry indent.',
       'Back at the margin without a blank.',
-      '  five      Outside the section, so no spacing and no bold.',
+      '  five      Under margin prose, so an entry all the same.',
       '',
       'Notes: these are not a heading',
       'from canned output instead (a lowercase start is not a heading):',
+      'Mid: a colon in the middle is not a heading either:',
+      '  Indented: a description line ending in a colon is not one:',
       'Trailing heading:',
       '  six      Not in Commands.',
-    ].map((l) => `//${l ? ` ${l}` : ''}`);
-    const src = readFileSync(TOOL_PATH, 'utf8').split('\n');
-    const end = src.findIndex((l, i) => i > 0 && !l.startsWith('//'));
-    const copy = path.join(dir, 'odd.mjs');
-    writeFileSync(copy, [src[0], ...header, ...src.slice(end)].join('\n'));
-    const show = (env) => spawnSync(NODE, [copy, '--help'], { encoding: 'utf8', timeout: 10000, env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env } }).stdout;
-    const plain = show({});
+    ];
+    const plain = helpWith(dir, 'odd', header);
     assert.equal(plain, [
       'odd - a tool whose header is shaped differently.',
       '',
       'Commands:',
+      '',
       '  one      An entry with a second line under it.',
       '           The second line.',
       '',
@@ -1720,24 +1740,30 @@ test('--help: a header shaped otherwise still prints as written, with only the b
       '      a name alone on its line is not an entry.',
       '',
       '  four x  An entry whose name is two words.',
-      '  Capital  A capital is not a command name, so this is part of the block above.',
+      '',
+      '  Capital  A capital is not a command name, so this is prose at the entry indent.',
       '',
       'Back at the margin without a blank.',
-      '  five      Outside the section, so no spacing and no bold.',
+      '  five      Under margin prose, so an entry all the same.',
       '',
       'Notes: these are not a heading',
       'from canned output instead (a lowercase start is not a heading):',
+      'Mid: a colon in the middle is not a heading either:',
+      '  Indented: a description line ending in a colon is not one:',
+      '',
       'Trailing heading:',
+      '',
       '  six      Not in Commands.',
       '',
     ].join('\n'));
-    const forced = show({ FORCE_COLOR: '1' });
+    const forced = helpWith(dir, 'odd', header, { FORCE_COLOR: '1' });
     assert.equal(unbold(forced), plain);
-    assert.ok(forced.includes(`\n${BOLD('Commands:')}\n  ${BOLD('one')}      An entry`));
+    assert.ok(forced.includes(`\n${BOLD('Commands:')}\n\n  ${BOLD('one')}      An entry`));
     assert.ok(forced.includes(`\n  ${BOLD('two-part')}   An entry`));
     assert.ok(forced.includes(`\n  ${BOLD('four x')}  An entry`));
-    assert.ok(forced.includes(`\n${BOLD('Trailing heading:')}\n`));
-    for (const unbolded of ['  three', 'Capital', 'five', 'Notes:', 'from canned output', 'six']) {
+    assert.ok(forced.includes(`\n  ${BOLD('five')}      Under`));
+    assert.ok(forced.includes(`\n${BOLD('Trailing heading:')}\n\n  ${BOLD('six')}      Not`));
+    for (const unbolded of ['three', 'Capital', 'Notes:', 'from canned output', 'Mid:', 'Indented:']) {
       assert.ok(!new RegExp(`\\x1b\\[1m[^\\x1b]*${unbolded}`).test(forced), unbolded);
     }
   } finally {
@@ -1745,7 +1771,7 @@ test('--help: a header shaped otherwise still prints as written, with only the b
   }
 });
 
-test('--help: in every section a blank line follows each entry\'s block (flags, modes, exit codes); names outside Commands stay plain', () => {
+test('--help: in every section the entry name is bold and a blank line separates the blocks (flags, modes, exit codes, names); a usage line bolds its tool and subcommand only', () => {
   const dir = tmp();
   try {
     const header = [
@@ -1755,6 +1781,8 @@ test('--help: in every section a blank line follows each entry\'s block (flags, 
       '  spaced inspect <path>...      read-only',
       '  spaced apply   <path>... [--go]',
       '                                mutating',
+      '  Both commands take paths.',
+      '  spaced --help | --version',
       '',
       'Commands:',
       '  inspect   Read-only.',
@@ -1767,6 +1795,7 @@ test('--help: in every section a blank line follows each entry\'s block (flags, 
       '  --quiet             The summary line only.',
       '  Every text mode ends with a next: line, for example',
       '    next: done  (x)',
+      '  --json cannot be combined with --quiet.',
       '',
       'Flags:',
       '  --go        apply: do it.',
@@ -1790,26 +1819,150 @@ test('--help: in every section a blank line follows each entry\'s block (flags, 
       '      wrapped.',
       '  2   usage error.',
       'Back at the margin.',
-      '  3   outside a section, as written.',
+      '  3   under margin prose, so an entry.',
     ];
-    const src = readFileSync(TOOL_PATH, 'utf8').split('\n');
-    const end = src.findIndex((l, i) => i > 0 && !l.startsWith('//'));
-    const copy = path.join(dir, 'spaced.mjs');
-    writeFileSync(copy, [src[0], ...header.map((l) => `//${l ? ` ${l}` : ''}`), ...src.slice(end)].join('\n'));
-    const show = (env) => spawnSync(NODE, [copy, '--help'], { encoding: 'utf8', timeout: 10000, env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env } }).stdout;
-    const plain = show({});
-    const blankBefore = [ // the header lines a blank line now comes before, and nothing else changes
-      '  apply     Mutating.', '  --brief              One line per item.', '  --quiet             The summary line only.',
-      '  -y, --yes   apply: pre-confirm,', '  --note <text>', '  --out <dir>  a flag with a value.',
-      '  1   partial,', '  2   usage error.', 'Back at the margin.',
+    const plain = helpWith(dir, 'spaced', header);
+    assert.equal(plain, [
+      'spaced - every section that lists entries.',
+      '',
+      'Usage:',
+      '',
+      '  spaced inspect <path>...      read-only',
+      '  spaced apply   <path>... [--go]',
+      '                                mutating',
+      '  Both commands take paths.',
+      '  spaced --help | --version',
+      '',
+      'Commands:',
+      '',
+      '  inspect   Read-only.',
+      '',
+      '  apply     Mutating.',
+      '',
+      'Output modes (all from one list):',
+      '',
+      '  (default)   human    The human mode,',
+      '                       on two lines.',
+      '',
+      '  --brief              One line per item.',
+      '',
+      '  --quiet             The summary line only.',
+      '',
+      '  Every text mode ends with a next: line, for example',
+      '    next: done  (x)',
+      '  --json cannot be combined with --quiet.',
+      '',
+      'Flags:',
+      '',
+      '  --go        apply: do it.',
+      '',
+      '  -y, --yes   apply: pre-confirm,',
+      '              wrapped onto a second line',
+      '              and a third.',
+      '',
+      '  --note <text>',
+      '              a flag alone on its line, its text below.',
+      '',
+      '  --out <dir>  a flag with a value.',
+      '',
+      '  --json cannot be combined with --brief (prose, not an entry).',
+      '  --since, --day, --all',
+      '              a list of flags alone on its line is not an entry.',
+      '',
+      'Conventions:',
+      '',
+      '  - a bullet is not an entry,',
+      '  - nor is the next one.',
+      '',
+      'Exit codes:',
+      '',
+      '  0   all ok.',
+      '',
+      '  1   partial,',
+      '      wrapped.',
+      '',
+      '  2   usage error.',
+      '',
+      'Back at the margin.',
+      '  3   under margin prose, so an entry.',
+      '',
+    ].join('\n'));
+    const forced = helpWith(dir, 'spaced', header, { FORCE_COLOR: '1' });
+    assert.equal(unbold(forced), plain);
+    const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
+    assert.deepEqual(spans, [
+      'Usage:', 'spaced inspect', 'spaced apply', 'spaced',
+      'Commands:', 'inspect', 'apply',
+      'Output modes (all from one list):', '(default)', '--brief', '--quiet',
+      'Flags:', '--go', '-y, --yes', '--note <text>', '--out <dir>',
+      'Conventions:', 'Exit codes:', '0', '1', '2', '3',
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--help: a margin lead-in is a heading whatever it holds (an apostrophe, a digit, parentheses), takes one blank line and never two, and its entries are bold', () => {
+  const dir = tmp();
+  try {
+    const header = [
+      'lead - lead-ins written as headings.',
+      '',
+      'The one exception to mode 600 (D764):',
+      'Prose directly under it.',
+      '',
+      "Creating a new key is the person's job:",
+      '  Anthropic   https://example.test/a',
+      '  OpenAI      https://example.test/b',
+      '',
+      'Creating a key isn’t this tool’s job:',
+      '',
+      'Already spaced:',
+      '',
+      '  Google      https://example.test/c',
+      '',
+      'Exit:',
+      'Another:',
+      '  0  all ok',
+      '  1  a finding',
     ];
-    assert.equal(plain, `${header.flatMap((l) => (blankBefore.includes(l) ? ['', l] : [l])).join('\n')}\n`);
-    let expected = plain;
-    for (const heading of ['Usage:', 'Commands:', 'Output modes (all from one list):', 'Flags:', 'Conventions:', 'Exit codes:']) {
-      expected = expected.replace(`\n${heading}\n`, `\n${BOLD(heading)}\n`);
-    }
-    expected = expected.replace('\n  inspect ', `\n  ${BOLD('inspect')} `).replace('\n  apply ', `\n  ${BOLD('apply')} `);
-    assert.equal(show({ FORCE_COLOR: '1' }), expected); // only the headings and the command names are bold
+    const plain = helpWith(dir, 'lead', header);
+    assert.equal(plain, [
+      'lead - lead-ins written as headings.',
+      '',
+      'The one exception to mode 600 (D764):',
+      '',
+      'Prose directly under it.',
+      '',
+      "Creating a new key is the person's job:",
+      '',
+      '  Anthropic   https://example.test/a',
+      '',
+      '  OpenAI      https://example.test/b',
+      '',
+      'Creating a key isn’t this tool’s job:',
+      '',
+      'Already spaced:',
+      '',
+      '  Google      https://example.test/c',
+      '',
+      'Exit:',
+      '',
+      'Another:',
+      '',
+      '  0  all ok',
+      '',
+      '  1  a finding',
+      '',
+    ].join('\n'));
+    assert.doesNotMatch(plain, /\n\n\n/);
+    const forced = helpWith(dir, 'lead', header, { FORCE_COLOR: '1' });
+    assert.equal(unbold(forced), plain);
+    const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
+    assert.deepEqual(spans, [
+      'The one exception to mode 600 (D764):', "Creating a new key is the person's job:", 'Anthropic', 'OpenAI',
+      'Creating a key isn’t this tool’s job:', 'Already spaced:', 'Google', 'Exit:', 'Another:', '0', '1',
+    ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

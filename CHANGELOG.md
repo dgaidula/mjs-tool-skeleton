@@ -8,8 +8,8 @@ and every exit code are byte for byte what 0.4.1 printed: 192 invocations
 (four environments, twelve commands, four modes, stdout, stderr and exit code)
 against the 0ef6970 runtime, and the scaffolder’s three modes, came out
 identical. The fence changes, so the sha256 moves from `caf3bd4c…` to
-`f18f0696…` (taken with the newline after the closing line, `1f1c5c19…` to
-`d7ee2574…`; `ADOPTING.md` gives both in full) and every adopted tool’s pinned
+`cd2bde6f…` (taken with the newline after the closing line, `1f1c5c19…` to
+`4486ab45…`; `ADOPTING.md` gives both in full) and every adopted tool’s pinned
 hash goes stale until it re-syncs (`ADOPTING.md` §10, “The 0.5.0 revision”). Runtime revisions carry no number of
 their own in this repo: a revision is the skeleton release and the block’s
 sha256, as 0.4.0 was for `v3`.
@@ -28,7 +28,7 @@ the emojis will line up vertically in a long list”, then “go”.
 - **Bold, only where it will be read as bold.** The item name after the glyph,
   every label (a leading `label:` in the summary, a `lines` entry or the reason
   line, a second one after three or more spaces, the `summary:` label) and, in
-  `--help`, each heading and each command name. ANSI SGR 1 on and 22 off,
+  `--help`, each heading, each usage name and each entry name. ANSI SGR 1 on and 22 off,
   written to a terminal when `NO_COLOR` is unset or empty and `TERM` is not
   `dumb`; `FORCE_COLOR` set to a non-empty value other than `0` or `false`
   forces it on and outranks both (Node’s `getColorDepth()` gives 2 colours for
@@ -51,20 +51,32 @@ the emojis will line up vertically in a long list”, then “go”.
   string, is blank, or holds a control character (TAB included) or a bidi mark
   (U+200E, U+200F, U+061C) anywhere, its ends included, is dropped whole. It
   is never in `--brief`, `--quiet` or `--json`.
-- **`--help`** bolds each heading (a capitalised phrase ending in a colon, alone
-  on its line) and, in `Commands:`, each command name at the start of an entry
-  (two spaces, the name, two or more spaces), and leaves a blank line after
-  each entry’s block in every section that lists entries: `Commands:`,
-  `Flags:`, `Output modes`, `Exit codes:` and the like (Dan, 2026-11-06,
-  mid-gate: “can you put the extra line break after an item in the other
-  sections, too? like flags, etc. it just helps a human to read better and
-  track across the page.”). Outside `Commands:` an entry’s first token is a
-  flag or a comma list of flags, each with any `<value>` (`-y, --yes`,
-  `--note <text>`, which may stand alone with its text below), or one word (a
-  mode, an exit code), and it stays plain. A block ends at the next entry, the
-  next heading or a line back at the left margin. A header shaped otherwise
-  prints as written. The skeleton’s own header puts `Output modes (…)` on one
-  line so that heading is bold too.
+- **`--help`** is set out as sections (Dan, 2026-11-06: “in help have the
+  command names in bold and then after the text for that section an extra line
+  break”, then “can you put the extra line break after an item in the other
+  sections, too? like flags, etc.”, then, after reading an adopted tool’s help,
+  “all the lines like this ‘Creating a new key is the person’s job:’ should be bold then a return so they read like headers for that section … --quiet and --json spacing needs a fix so --json is its own section. I also think all the keys in the left column should be bold, since I use the light retina tx-02 I can miss things and the bold helps so each cmd or key is scannable.”).
+  A heading is a line at the left margin that starts with a capital, ends in a
+  colon and holds no other colon, so a prose lead-in written on its own line
+  (`Creating a new key is the person’s job:`, with its apostrophe, digits or
+  parentheses) is one; it is bold and a blank line follows it. An entry is
+  two spaces, a first token, two or more spaces and its text, under a heading
+  or directly under margin prose, and the token alone is bold in every
+  section: a command name, a flag or a comma list of flags with any `<value>`
+  (`-y, --yes`, `--note <text>`, which may stand alone with its text below), a
+  mode, an exit code, a name such as `Anthropic`. A blank line follows each
+  entry’s block. A line of two spaces that is not an entry (prose at an entry’s
+  indent, or a flag with one space after it, such as `--json cannot be
+  combined with --brief or --quiet.`) is a block of its own, with a blank line
+  before it, so it is no longer glued to the entry above. In `Usage:` the tool
+  name (the first token of the first usage line) and the lowercase words after
+  it, `mytool list`, are bold at the start of each line that begins
+  with that name; the arguments are not, and no blank lines come between usage
+  lines. A header shaped otherwise prints as written; a wrapped line at the
+  margin that starts with a capital and ends in a colon is read as a heading
+  (end the line another way, or indent it). The lines and their order are
+  unchanged: only blank lines and bold are added. The skeleton’s own header
+  puts `Output modes (…)` on one line so that heading is bold too.
 - **The layout’s names carry the runtime prefix** (`runtimeBoldEnabled`,
   `RUNTIME_LABEL`, `runtimeMarkOf`, `RUNTIME_HELP_ENTRY` and the rest). The
   release gate found that a bare `LABEL` in the block clashed with an adopted
@@ -72,13 +84,14 @@ the emojis will line up vertically in a long list”, then “go”.
   once re-synced. Every adopted tool carrying the v3 fence was scanned for a
   top-level declaration of each fence name and checked with `node --check`
   after the swap: none clashes.
-- **Tests: 97 → 112.** The golden human test takes the new layout; new tests
+- **Tests: 97 → 113.** The golden human test takes the new layout; new tests
   cover the blank-line layout, the bold matrix (a terminal, a pipe,
   `NO_COLOR`, `FORCE_COLOR` in its forms, and both), the label positives and
   negatives, the injection cases, the mark (shown in human, absent from
   brief, quiet and json, capped, dropped on a control character), the help
-  bolding and spacing on the skeleton’s header and on a header shaped
-  differently, and the three non-human modes equal with every colour variable
+  headings, entry names and usage names on the skeleton’s header, on a header
+  shaped differently and on lead-in headings (an apostrophe, a digit,
+  parentheses), and the three non-human modes equal with every colour variable
   set; and, from the release gate, `TERM=dumb` in the bold matrix, marks with
   a control character or a bidi mark at either end, the grapheme cap, a
   sentence-shaped label, a lowercase line that is not a heading, the spacing of

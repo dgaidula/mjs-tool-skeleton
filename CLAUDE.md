@@ -149,7 +149,7 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     guard is its last statement, so every top-level binding is initialised
     before `main()` runs), carries its own namespaced imports, holds no
     tool-specific code and no `<tool>` placeholder. A contract change bumps
-    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `f18f0696…` (`d7ee2574…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
+    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `cd2bde6f…` (`4486ab45…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
 
 13. **Text output is frozen, except the `--brief` item line, which has one rule, and the human layout, which changed once.**
     The summary line is byte-identical to what 0.1.0 printed, the
@@ -232,21 +232,29 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
       in `--brief`, `--quiet` or `--json` (`jsonItem()` does not copy it), so the
       facts it stands for belong in `data`, and the marks of one tool should
       share a column width.
-    - **`--help`:** a heading is a capitalised phrase ending in a colon, on its
-      own line (`Usage:`, `Output modes (all rendered from the same item
-      objects):`), and is bold; it opens a section, which ends at the next
-      heading or a line back at the margin. In every section an entry is two
-      spaces, a first token, two or more spaces and its text: in `Commands:` a
-      lowercase name (up to three words), which is bold; elsewhere a flag or a
-      comma list of flags, each with any `<value>` or `[value]` (`-y, --yes`,
-      `--note <text>`, which may also stand alone with its text below), or one
-      word (a mode, an exit code), which stays plain (Dan, 2026-11-06: “can you
-      put the extra line break after an item in the other sections, too? like
-      flags, etc. it just helps a human to read better and track across the
-      page.”). A blank line follows each entry’s block (up to the next entry or
-      the end of the section), bold or not. A header shaped otherwise prints as
-      written. The skeleton’s own header keeps each heading on one line for this
-      reason.
+    - **`--help`** (Dan, 2026-11-06, after the first pass: “all the lines like this ‘Creating a new key is the person’s job:’ should be bold then a return so they read like headers for that section … --quiet and --json spacing needs a fix so --json is its own section. I also think all the keys in the left column should be bold, since I use the light retina tx-02 I can miss things and the bold helps so each cmd or key is scannable.”):
+      a heading is a line at the left margin that starts with a capital, ends
+      in a colon and holds no other colon (`Usage:`, `Output modes (all rendered
+      from the same item objects):`, or a prose lead-in a tool writes on its own
+      line, `Creating a new key is the person’s job:`). It is bold, and a
+      blank line follows it. It opens a section, which ends at the next heading
+      or a line back at the margin. An entry, under a heading or directly under
+      margin prose, is two spaces, a first token, two or more spaces and its
+      text, and the token alone is bold in every section (a command name, up to
+      three lowercase words, in `Commands:`; elsewhere a flag or a comma list
+      of flags with any `<value>` or `[value]`, which may stand alone with its
+      text below, or one word: a mode, an exit code, a name). A blank line
+      follows each entry’s block. A line of two spaces that is not an entry
+      (prose at the entry indent, a flag with one space after it) is a block of
+      its own with a blank line before it (the 0.5.0 re-check’s R1-1). In
+      `Usage:` the tool name, the first token of the first usage line, and the
+      lowercase words after it are bold on each line that begins with that name,
+      with no blank lines between usage lines. A header shaped otherwise prints
+      as written. The skeleton’s own header keeps each heading on one line for
+      this reason. A prose lead-in that ends in a colon is now a heading on
+      purpose: an adopter who wants a section’s lead-in read as one puts it on
+      its own line ending in `:`, and one that should stay plain does not end
+      in a colon.
     - **Tests:** `node --test` sets `FORCE_COLOR=1` for its files on a terminal,
       so both test files delete `FORCE_COLOR` and `NO_COLOR` before they spawn
       anything. Keep that in any new test file that runs a tool in human mode.

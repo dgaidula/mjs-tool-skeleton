@@ -192,15 +192,17 @@ summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
   that is not a string, is blank, or holds a control character or a bidi mark
   (U+200E, U+200F, U+061C) anywhere, its ends included, is dropped whole. Items
   without one print as they do without the feature.
-- `--help` bolds each heading (`Usage:`, `Commands:` …) and, in the
-  `Commands:` section, each command name at the start of an entry (two spaces,
-  the name, two or more spaces). In every section that lists entries
-  (`Commands:`, `Flags:`, `Output modes`, `Exit codes:` …) it leaves a blank
-  line after each entry’s block, so the eye can track across the page; an
-  entry is two spaces, a first token (a command, a flag such as `--brief` or
-  `-y, --yes` with any `<value>`, a mode, an exit code), two or more spaces
-  and its text, and a lone flag with its text on the lines below counts too.
-  Names outside `Commands:` stay plain. A header shaped otherwise prints as
+- `--help` is set out as sections. A heading (`Usage:`, `Commands:` …, or a
+  prose lead-in a tool writes on its own line ending in a colon, such as
+  `Creating a new key is the person’s job:`) is bold with a blank line after
+  it. Every entry name is bold, in every section: a command, a flag such as
+  `--brief` or `-y, --yes` with any `<value>`, a mode, an exit code (an entry
+  is two spaces, a first token, two or more spaces and its text, and a lone flag
+  with its text on the lines below counts too). A blank line follows each
+  entry’s block, so the eye can track across the page, and a line of prose at
+  an entry’s indent is a block of its own. In `Usage:` the tool name and
+  subcommand of each line are bold. To get a lead-in read as a heading, put it
+  on its own line and end it with a colon. A header shaped otherwise prints as
   written.
 
 The item fields the renderer reads are `path`, `name`, `verdict`, `summary`,
@@ -539,8 +541,9 @@ scaffolded tool. It locks the contract:
   capped by grapheme so a joined emoji stays whole, dropped when it holds a
   control character or a bidi mark at either end or inside;
   `--brief`, `--quiet` and `--json` the same bytes with every colour variable
-  set; `--help` headings and command names bold and a blank line after each
-  entry’s block in every section (commands, flags, modes, exit codes), with a
+  set; `--help` headings, usage names and every entry name bold, a blank line after
+  each heading and each entry’s block in every section (commands, flags, modes,
+  exit codes), prose at an entry’s indent a block of its own, with a
   differently shaped header printed as written; a tool’s own `LABEL` or
   `markOf` above the runtime loads, since the layout’s names carry the
   runtime prefix.
