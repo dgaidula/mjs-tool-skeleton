@@ -8,7 +8,7 @@ rich human output, a one-line-per-item `--brief`, machine-readable `--json`,
 and a `--quiet` summary, with a dry-run mutation gate, honest exit codes, and
 one line of advice on what to do next.
 
-**Hardened:** 2026-11-02 · 936faf7 · gate CLOSED WITH FOLLOW-UPS (round-5 re-check; its follow-ups landed in f82a749)
+**Hardened:** 2026-11-06 · c295659 · 0.5.0 readable human output: gate FIX FIRST (5522e3d, xhigh with mutants), one fix round, re-check CLOSED WITH FOLLOW-UPS (54a7c39); help-layout gate FIX FIRST (c795661), one fix round, final re-check CLOSED WITH FOLLOW-UPS (0c7376c). Before it: 2026-11-02 · 936faf7 · gate CLOSED WITH FOLLOW-UPS (round-5 re-check; its follow-ups landed in f82a749)
 
 ## The problem
 
