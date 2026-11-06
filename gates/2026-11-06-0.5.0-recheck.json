@@ -1,0 +1,156 @@
+{
+  "tool": "mjs-tool-skeleton",
+  "run": "0.5.0 closure re-check (release mode, scoped): fix pass 5522e3d..46f2d6c on main against gates/2026-11-06-0.5.0-gate.json",
+  "date": "2026-11-06",
+  "verdict": "CLOSED WITH FOLLOW-UPS",
+  "scope": "5522e3d..46f2d6c is one commit, 46f2d6c, touching ADOPTING.md, CHANGELOG.md, CLAUDE.md, README.md, bin/new-tool.mjs (fence only), skeleton/tool.mjs (fence only), skeleton/tool.test.mjs, test/new-tool.test.mjs. Nothing outside the findings and Dan’s mid-gate addition (a blank line after each entry’s block in every --help section).",
+  "settled": {
+    "CLAUDE.md invariant 12 (as fixed)": "Every new top-level name in the fence is one no adopted tool declares … The human layout’s names carry the runtime/RUNTIME_ prefix … before a release, scan every adopted tool for a top-level declaration of each fence name and node --check a copy with the new block swapped in.",
+    "CLAUDE.md invariant 15 (as fixed)": "--brief, --quiet and --json never do [carry it], byte for byte … In every section an entry is two spaces, a first token, two or more spaces and its text: in Commands: a lowercase name (up to three words), which is bold; elsewhere … which stays plain … A blank line follows each entry’s block (up to the next entry or the end of the section), bold or not."
+  },
+  "suite": {
+    "command": "npm test (node --test)",
+    "baseline": "107 at 4c3d9b0 (first receipt)",
+    "pass": 112,
+    "fail": 0,
+    "runs": "piped 112/112; on a pty (script -q) 112/112; on a pty with TERM=dumb 112/112"
+  },
+  "closure": {
+    "F1": {
+      "status": "closed",
+      "evidence": "All ten layout names carry the prefix (runtimeBoldEnabled, runtimeBoldWith, RUNTIME_LABEL_WORD, RUNTIME_LABEL, runtimeBoldLabels, RUNTIME_MARK_MAX, runtimeMarkOf, RUNTIME_HELP_HEADING, RUNTIME_HELP_COMMAND, RUNTIME_HELP_ENTRY); no bare name left in either fence copy. Fleet scan: 116 adopted tool files carry the v3 fence (118 with the skeleton’s two copies; 21 test files that hold the markers inside string literals are not tools and were left out). With the 46f2d6c block swapped in, node --check passes on 116/116; with the 4c3d9b0 block (positive control) 115/116, the one failure “Identifier 'LABEL' has already been declared” in adopted tool B. None of the ten new names occurs anywhere outside the fence in any tool. Tool B’s swapped copy runs --help with exit 0 in a sandbox (network blocked); with the 4c3d9b0 block it fails to load. A new test declares the old bare names above the runtime and loads; mutants M20-M22 (a bare LABEL, markOf, HELP_ENTRY back in the fence) turn it red."
+    },
+    "F2": {
+      "status": "closed",
+      "evidence": "Block sha256 f18f06964de30ba391069e8c42d215a2a193cfa9dd51d21640bfc4cfb7f571dc, with the trailing newline d7ee25749e10993323934bcd425e5fe8d35ed82a659884739ac93233ed503ef8, byte-identical in skeleton/tool.mjs and bin/new-tool.mjs (computed here). ADOPTING’s 0.5.0 section names both in full and which form each covers; CLAUDE.md invariant 12 and CHANGELOG name both; FENCE_SHA256 is f18f0696…; no stale 27679d92/c4e528bb outside the first receipt and an old EFFORT row. A new test checks ADOPTING names both; mutant M24 (one wrong digit) turns it red. A freshly scaffolded tool carries f18f0696 and its own suite is 72/72 piped and on a pty."
+    },
+    "F3": {
+      "status": "closed",
+      "evidence": "On a pty with FORCE_COLOR and NO_COLOR unset: TERM=dumb gives no escape byte in human mode or --help; TERM=xterm-256color, an empty TERM and TERM=DUMB bold (Node itself treats only the exact value dumb as 2 colours); TERM=dumb with FORCE_COLOR=1 bolds, with FORCE_COLOR=0 or NO_COLOR=1 does not. The bold matrix test gains three rows; mutants M1-M3 (rule removed, TERM=dumb outranking FORCE_COLOR, rule inverted) are killed."
+    },
+    "F4": {
+      "status": "closed",
+      "evidence": "The control and bidi check runs on the untrimmed mark. In-process: a dot with LF, CR, U+2028 or FF after it, or TAB, U+2029 or VT before it, is dropped whole (the 4c3d9b0 fence kept the dot for each); spaces and a no-break space are still trimmed. Mutant M4 (check after the trim) is killed."
+    },
+    "F5": {
+      "status": "closed",
+      "evidence": "The code comment, CHANGELOG, README and CLAUDE.md now say a phrase of one to three lowercase words before a colon is a label, sentence or not (`the file was: gone`), and that a capital, a comma or a fourth word is not; no wording that a sentence is never bolded remains. The labels test pins the three-word case."
+    },
+    "FU1": {
+      "status": "closed",
+      "evidence": "ADOPTING 0.5.0 step 5 tells an adopter to re-wrap a two-line heading onto one line, re-word or indent a margin lead-in ending in a colon, and put two spaces after a list’s first token. The optional half (a `Commands (…):` heading treated as Commands) was not taken; its entries are spaced but plain, as documented."
+    },
+    "FU2": {
+      "status": "closed",
+      "evidence": "The cap counts grapheme clusters (Intl.Segmenter): two dots then a seven-code-point family keeps the family whole (4c3d9b0 cut it after a U+200D); nine families keep eight; a flag counts as one. Mutants M8 (code points again) and M9 (cap 9) are killed."
+    },
+    "FU3": {
+      "status": "closed",
+      "evidence": "A mark holding U+200E, U+200F or U+061C anywhere, ends included, is dropped (4c3d9b0 kept each). Mutants M5 (no bidi check) and M6 (U+061C missed) are killed; M7 (TAB missed) too."
+    },
+    "FU4": {
+      "status": "closed",
+      "evidence": "README’s caption now says the next: line that ends the sample is left out; the block is unchanged."
+    },
+    "FU5": {
+      "status": "closed",
+      "evidence": "The shaped-header test has a lowercase margin line ending in a colon that prints plain; the first receipt’s M33 (heading may start lowercase), re-run here as M23, is killed."
+    }
+  },
+  "danAddition": {
+    "ask": "“can you put the extra line break after an item in the other sections, too? like flags, etc.” (Dan, 2026-11-06): in --help, a blank line after each entry’s block in every section, entry names outside Commands: plain.",
+    "status": "done",
+    "evidence": "Every one of the 116 adopted headers spliced into the 0ef6970, 4c3d9b0 and 46f2d6c skeletons and run with --help piped: the 46f2d6c output has the same non-blank lines in the same order as either older one, the older output is a subsequence of it with only blank lines added (1405 against 0ef6970 and 1220 against 4c3d9b0, over 110 tools; 4c3d9b0’s own blank lines all kept), stderr and exit equal, no escape byte piped, and the FORCE_COLOR=1 output unbolds to the piped text. Under FORCE_COLOR=1 the bold spans are 526 headings and 267 names in a `Commands:` section, nothing else: no flag, mode, exit code or other first token is bold. New blank lines land in Flags (656), Exit codes (310), Output modes (138), Options and the like; none in Usage. The skeleton’s own --help spaces Commands, Output modes, Flags and Exit codes. Mutants M10-M19 on the entry rule (no spacing outside Commands, tokens bolded, rule applied to margin prose, a one-space token, a lone flag refused, a lone comma list accepted, no <value>, a bullet accepted, a heading closing only Commands blocks, a doubled blank) are all killed."
+  },
+  "byteIdentity": {
+    "method": "The 0ef6970 and 46f2d6c skeletons run in turn from one path with one package.json: 12 argument sets (inspect/apply over ok, empty, directory, missing and protected files and 9 hostile names: ESC/SGR, C1 CSI, RLO, U+2028, LF, TAB, a label-shaped name, emoji, U+200E; --go, --yes, --note, a missing --note value, an unknown command, no path, --version, --cheat) x 6 mode sets (human, --brief, --quiet, --json, --brief --quiet, --json --brief) x 5 environments (none, NO_COLOR=1, FORCE_COLOR=1, TERM=dumb, FORCE_COLOR=0) x piped and pty (on the pty stdout and stderr merge; exit read from a marker file). --help is left out here (its header text changed in 4c3d9b0) and covered by the splice above.",
+    "result": "1440 runs (720 pairs): all 620 non-human pairs byte-identical (stdout, stderr, exit); of the 100 human pairs 58 byte-identical and 42 identical once SGR 1/22 and blank lines are removed, stderr and exit equal; 0 differ. Scaffolder, 12 argument sets at both versions (four modes, a bad name in brief and json, an unknown flag, --version, --cheat, a bad --author, an unwritable --dir, --brief --quiet): identical except blank lines in the human run and the template byte counts in --json data."
+  },
+  "mutants": {
+    "spec": "24 hand-written find/replace mutants; M1-M23 edit the fence identically in skeleton/tool.mjs and bin/new-tool.mjs, M24 edits ADOPTING.md",
+    "command": "node --test --test-skip-pattern=\"hashes to the pinned sha256\" (the hash pin would kill every fence mutant by itself)",
+    "run": "isolated copies, --jobs 4",
+    "baseline": "green (23.1 s)",
+    "killed": ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17", "M18", "M19", "M20", "M21", "M22", "M23", "M24"],
+    "survived": [],
+    "list": {
+      "M1": "TERM rule removed (TERM=dumb bolds again)",
+      "M2": "TERM=dumb outranks FORCE_COLOR",
+      "M3": "TERM rule inverted",
+      "M4": "control/bidi check after the trim (F4 back)",
+      "M5": "bidi marks not checked in a mark",
+      "M6": "U+061C not checked",
+      "M7": "TAB not checked in a mark",
+      "M8": "mark cap by code point again",
+      "M9": "mark cap 9",
+      "M10": "entry rule: no spacing outside Commands",
+      "M11": "entry rule: first token bolded outside Commands",
+      "M12": "entry rule applied outside any section",
+      "M13": "entry: one space after a one-word token is enough",
+      "M14": "entry: a lone flag with its text below is not an entry",
+      "M15": "entry: a lone comma list of flags counts",
+      "M16": "entry: no <value> after the first flag",
+      "M17": "entry: a bullet (dash, space) counts",
+      "M18": "a heading or margin line closes only a Commands block",
+      "M19": "close() doubles a blank the author wrote",
+      "M20": "bare LABEL in the fence (F1 revert)",
+      "M21": "bare markOf in the fence",
+      "M22": "bare HELP_ENTRY in the fence",
+      "M23": "heading may start lowercase (first receipt’s M33)",
+      "M24": "ADOPTING names a wrong with-newline hash"
+    },
+    "summary": "ok=26 (24 mutants, baseline twice, real tree): 24 killed, 0 survived; four mark mutants were re-run after a spec encoding fix (raw bidi characters in the first spec; refused as invalid, never run)",
+    "realTree": "ok 14 files + git unchanged  real tree"
+  },
+  "regressions": "None found. Suite green three ways; non-human modes byte-identical to 0ef6970; every adopted header keeps its lines and order; no new top-level collision.",
+  "findings": [],
+  "notBlocking": [
+    {
+      "id": "R1-1",
+      "summary": "An entry’s block runs on through any two-space-indented line that is not an entry, so a closing prose paragraph is glued to the last entry: in the skeleton’s own --help, “Every text mode then ends with one `next:` line …” sits under --quiet with no blank between; and a flag written with one space after it (`-o, --out <path> the output file`) folds into the flag above. 315 such lines in 76 of the 116 adopted headers. Nothing is lost (only blank lines are added, and the docs describe the block this way), but it works against the ask’s aim of letting the eye track entries.",
+      "location": "skeleton/tool.mjs:971-1000 (helpText, close()); the skeleton header’s Output modes section; ADOPTING.md 0.5.0 step 5",
+      "repro": "node skeleton/tool.mjs --help | grep -A1 -- '^  --quiet  ' ->“  --quiet             The summary line only.” then “  Every text mode then ends …” with no blank line between.",
+      "acceptance": "Either a two-space line in a non-Commands section that is not an entry closes the entry above (a blank before it), with a test row and a re-run of the header splice; or the skeleton header puts a blank line before its closing Output modes paragraph and ADOPTING step 5 tells adopters to do the same.",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "likely",
+      "confidence": "high",
+      "cause": "A block ends only at the next entry, a heading or the margin.",
+      "needsDesign": false
+    },
+    {
+      "id": "R1-2",
+      "summary": "Counting the mark cap by grapheme no longer bounds its length: eight clusters can carry any number of combining marks, so a mark of eight letters with 200 combining accents each puts 1614 UTF-16 units on the summary line (14 under 4c3d9b0’s code-point cap). Human mode only; nothing unsafe.",
+      "location": "skeleton/tool.mjs:788-795 (runtimeMarkOf)",
+      "repro": "report() in-process with mark ('a' + U+0301 x200) x8 -> summary line 1614 units long.",
+      "acceptance": "A second cap on code points (say 32) after the grapheme cut, or a Known limit naming it.",
+      "blocking": false,
+      "severity": "info",
+      "likelihood": "unlikely",
+      "confidence": "high",
+      "cause": "Grapheme count is the only cap.",
+      "needsDesign": false
+    },
+    {
+      "id": "R1-3",
+      "summary": "runtimeMarkOf builds a new Intl.Segmenter for every item that has a mark: 20 000 marked items render in 169 ms against 14 ms unmarked (about 8 microseconds an item).",
+      "location": "skeleton/tool.mjs:793",
+      "repro": "report() in-process over 20 000 items with mark 🟢 -> 169 ms; the same items without a mark -> 14 ms.",
+      "acceptance": "One segmenter at module scope (a fence change: bundle it with the next revision), or leave as is.",
+      "blocking": false,
+      "severity": "info",
+      "likelihood": "unlikely",
+      "confidence": "high",
+      "cause": "Constructor inside the per-item function.",
+      "needsDesign": false
+    }
+  ],
+  "knownLimits": [
+    "A mark may still hold other invisible format characters (U+200B, U+2060, U+00AD); the docs name only the three bidi marks, so nothing promised is broken.",
+    "TERM is compared exactly: TERM=DUMB, an empty TERM and an unset TERM on a terminal bold, as Node’s own colour reading does for those values.",
+    "A Node built without Intl would throw (exit 3) on the first item with a mark; official builds carry full ICU.",
+    "A `Commands (…):` heading’s names are spaced but not bold (the optional half of the first receipt’s FU1, not taken)."
+  ],
+  "authorClaims": "Fixer’s rename list, hash values, TERM rule, pre-trim check, grapheme cap, docs and 107 -> 112 all reproduced. Its collision-scan count (118 fenced files) matches this scan’s 116 tools plus the skeleton’s two copies. Its byte-identity run count was not reproduced (the commit message says 1584 runs); this receipt rests on its own 1440-run matrix.",
+  "note": "Public receipt: the adopted tools are private and appear here as tools A-Z, as in the first receipt (tool B is the one whose LABEL clashed; tool A, the key-file manager, has since re-synced to the d7ee2574 form in its own repo). No local paths."
+}
