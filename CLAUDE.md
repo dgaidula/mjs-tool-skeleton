@@ -149,7 +149,7 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     guard is its last statement, so every top-level binding is initialised
     before `main()` runs), carries its own namespaced imports, holds no
     tool-specific code and no `<tool>` placeholder. A contract change bumps
-    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `cd2bde6f…` (`4486ab45…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
+    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `30e4ef6c…` (`af807ab4…` taken with the newline after the closing marker; `ADOPTING.md` names both in full). Every new top-level name in the fence is one no adopted tool declares: the block is pasted above code it has never seen, and a clash is a `SyntaxError` as the module loads (exit 1, invariant 8). The human layout’s names carry the `runtime`/`RUNTIME_` prefix, as the namespaced imports do, because 0.5.0’s first `LABEL` clashed with an adopted tool’s own; before a release, scan every adopted tool for a top-level declaration of each fence name and `node --check` a copy with the new block swapped in.
 
 13. **Text output is frozen, except the `--brief` item line, which has one rule, and the human layout, which changed once.**
     The summary line is byte-identical to what 0.1.0 printed, the
@@ -236,7 +236,7 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
       a heading is a line at the left margin that starts with a capital, ends
       in a colon and holds no other colon (`Usage:`, `Output modes (all rendered
       from the same item objects):`, or a prose lead-in a tool writes on its own
-      line, `Creating a new key is the person’s job:`). It is bold, and a
+      line, `Creating a new key is the person’s job:`). It is bold, and one
       blank line follows it. It opens a section, which ends at the next heading
       or a line back at the margin. An entry, under a heading or directly under
       margin prose, is two spaces, a first token, two or more spaces and its
@@ -247,9 +247,16 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
       follows each entry’s block. A line of two spaces that is not an entry
       (prose at the entry indent, a flag with one space after it) is a block of
       its own with a blank line before it (the 0.5.0 re-check’s R1-1). In
-      `Usage:` the tool name, the first token of the first usage line, and the
-      lowercase words after it are bold on each line that begins with that name,
-      with no blank lines between usage lines. A header shaped otherwise prints
+      `Usage:` the lowercase words after the tool name (the first token of the
+      first usage line) are bold on each line that begins with that name; the
+      name and the arguments are not, a line with no subcommand
+      (`tool --help | --version`) bolds nothing, and no blank lines come
+      between usage lines. The help opens with one blank line, and the tool’s
+      name where the first line opens (`name - …`, an en or em dash, or
+      `name: …`) is bold. Two blank lines come before every heading that
+      follows content and one after it; entries keep one between them (Dan,
+      2026-11-06, after reading an adopted tool’s help: “a line break is need at the start bc envoking help and the intro text run together … then make the tool name in that first paragraph bold … when it lists usage the tool name can be regular and the command is bold. since you would’ve already seen the command in bold above. the import[ant] part is seeing the cmd. … now that we are using line breaks to separate everything we need two line breaks after each section so you know its a section.”). A header
+      shaped otherwise prints
       as written. The skeleton’s own header keeps each heading on one line for
       this reason. A prose lead-in that ends in a colon is now a heading on
       purpose: an adopter who wants a section’s lead-in read as one puts it on

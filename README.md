@@ -200,9 +200,11 @@ summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
   is two spaces, a first token, two or more spaces and its text, and a lone flag
   with its text on the lines below counts too). A blank line follows each
   entry’s block, so the eye can track across the page, and a line of prose at
-  an entry’s indent is a block of its own. In `Usage:` the tool name and
-  subcommand of each line are bold. To get a lead-in read as a heading, put it
-  on its own line and end it with a colon. A header shaped otherwise prints as
+  an entry’s indent is a block of its own. Two blank lines come before each
+  heading, so a section reads as one. In `Usage:` the subcommand of each line is
+  bold, not the tool name. The help opens with a blank line, and the tool’s name
+  on its first line is bold. To get a lead-in read as a heading, put it on its
+  own line and end it with a colon. A header shaped otherwise prints as
   written.
 
 The item fields the renderer reads are `path`, `name`, `verdict`, `summary`,

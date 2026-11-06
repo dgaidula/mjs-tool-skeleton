@@ -109,13 +109,14 @@ on it before you touch it.
   comment block with no blank line between. A `/** … */` header, or a blank
   line after the shebang, gives an empty `--help`. Since 0.5.0 it also sets the
   text out: a heading (a line at the left margin that starts with a capital and
-  ends in a colon) is bold with a blank line after it, and in every section
+  ends in a colon) is bold with two blank lines before it and one after it, and in every section
   each entry (two spaces, a first token, two or more spaces, the text) has its
   token in bold and a blank line after its block. The token is a lowercase
   command name in `Commands:`, and elsewhere a flag or a comma list of flags
   with any `<value>` (`-y, --yes`, `--note <text>`, which may stand alone with
-  its text below), a mode name, an exit code or a name. In `Usage:` the tool
-  name and subcommand of each line are bold. Keep a heading on one line (`Output
+  its text below), a mode name, an exit code or a name. In `Usage:` the
+  subcommand of each line is bold, not the tool name. The help opens with a
+  blank line, and the tool’s name on its first line is bold. Keep a heading on one line (`Output
   modes (all rendered from the same item objects):`, not wrapped) and write
   entries in that shape; a header shaped otherwise prints as written.
 
@@ -968,10 +969,10 @@ release and the block’s sha256 (the 0.4.x block was `caf3bd4c…`, or
 
 - the block alone, from the first character of the opening line through the
   last of the closing line (the form `test/new-tool.test.mjs` pins):
-  `cd2bde6f39ab4249c2d4e15329a58d616c509ade2563a37658e780f1a4a0adbd`;
+  `30e4ef6c1de9bb86691ce38616cbf5e780ee77d8bf89270bdc658082503ac52e`;
 - the block and the newline after its closing line (the form most adopted
   fence tests pin, those that hash `fence + "\n"`):
-  `4486ab45dc0103dedb5cdb03409fdc0416afd1c6612f23a59bb20f0d63c219fa`.
+  `af807ab49aeb4410113663053840cc03e6ca802507f6b6208a6beec1de3596ed`.
 
 The fence test’s “edited” reading of an adopted tool is therefore expected
 until it re-syncs.
@@ -980,7 +981,7 @@ until it re-syncs.
    drops none: `runtimeBoldEnabled`, `runtimeBoldWith`, `RUNTIME_LABEL_WORD`,
    `RUNTIME_LABEL`, `runtimeBoldLabels`, `RUNTIME_MARK_MAX`, `runtimeMarkOf`,
    `RUNTIME_HELP_HEADING`, `RUNTIME_HELP_COMMAND`, `RUNTIME_HELP_FLAG`,
-   `RUNTIME_HELP_ENTRY`, `RUNTIME_HELP_USAGE`. They
+   `RUNTIME_HELP_ENTRY`, `RUNTIME_HELP_TITLE`, `RUNTIME_HELP_USAGE`. They
    carry the runtime’s prefix because a block pasted over code it has never
    seen must not take a name the tool already has: a draft of 0.5.0 declared a
    bare `LABEL`, which one adopted tool declares too, and that tool would not
@@ -995,15 +996,15 @@ until it re-syncs.
    some other way is unaffected.
 
 2. **Move the fence test** to the new sha256 and name the release (0.5.0), as
-   step 2 above. Take the value in the form the test hashes: `cd2bde6f…` for
-   the block alone, `4486ab45…` for the block and its newline (both in full
+   step 2 above. Take the value in the form the test hashes: `30e4ef6c…` for
+   the block alone, `af807ab4…` for the block and its newline (both in full
    above). A test that pins the wrong form stays red.
 
 3. **Update the tests that pin human output.** Each item block is followed by a
    blank line (the last item’s is the one before `summary:`, as before), so a
    golden human run gains one empty line between items; a test that pins
-   `--help` text sees a blank line after every heading and after each entry’s block
-   in every section (commands, flags, output modes, exit codes), a block of its
+   `--help` text sees two blank lines before every heading, one after it and one after each
+   entry’s block in every section (commands, flags, output modes, exit codes), a block of its
    own for prose at an entry’s indent, and the entry names and usage names in
    bold on a terminal.
 

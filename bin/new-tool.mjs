@@ -990,26 +990,31 @@ function environmentError(message) {
 
 // Read the leading comment block of THIS file as help text (contact-sheet-cli
 // pattern): skip the shebang, take the contiguous `//` lines, strip the `// `.
-// The text is then set out for reading. A heading is a line at the left margin
-// that starts with a capital and ends in a colon, with no other colon in it
-// (`Usage:`, `Output modes (all rendered from one list):`, or a lead-in written
-// as one: `Creating a new key is the person's job:`). It is bold and a blank
-// line follows it. It opens a section, which ends at the next heading or a line
-// back at the left margin. An entry, in a section or under a line of prose, is
-// a line of two spaces, a first token, two or more spaces and its text; the
-// token is bold, the text is not. The token is a flag or a comma-separated list
-// of them (`--brief`, `-y, --yes`), each with any `<value>` or `[value]` after
-// it, or one word (a mode, an exit code, a name). One flag may also stand alone,
-// its text on the lines below (`--note <text>`). In the `Commands:` section the
-// token is a lowercase command name (up to three words). A blank line follows
-// each entry's block (the lines up to the next entry or the end of the section).
-// A line of two spaces that is not an entry (prose at an entry's indent, a flag
-// with one space after it) is a block of its own, with a blank line before it.
-// In `Usage:` the tool name (the first token of the first usage line) and the
-// lowercase words after it are bold at the start of each line that begins with
-// that name; no blank lines come between usage lines. The blank lines are always
-// added, the bold only where runtimeBoldEnabled() allows it. A header shaped
-// otherwise prints as written.
+// The text is then set out for reading. It opens with one blank line, so the
+// command that asked for it and the text do not run together, and the tool's
+// name where it opens the first line (`name - what it does`, or `name: ...`) is
+// bold. A heading is a line at the left margin that starts with a capital and
+// ends in a colon, with no other colon in it (`Usage:`, `Output modes (all
+// rendered from one list):`, or a lead-in written as one: `Creating a new key
+// is the person's job:`). It is bold, two blank lines come before it (when
+// something comes before it) and one blank line follows it. It opens a section,
+// which ends at the next heading or a line back at the left margin. An entry,
+// in a section or under a line of prose, is a line of two spaces, a first
+// token, two or more spaces and its text; the token is bold, the text is not.
+// The token is a flag or a comma-separated list of them (`--brief`, `-y,
+// --yes`), each with any `<value>` or `[value]` after it, or one word (a mode,
+// an exit code, a name). One flag may also stand alone, its text on the lines
+// below (`--note <text>`). In the `Commands:` section the token is a lowercase
+// command name (up to three words). A blank line follows each entry's block
+// (the lines up to the next entry or the end of the section). A line of two
+// spaces that is not an entry (prose at an entry's indent, a flag with one
+// space after it) is a block of its own, with a blank line before it. In
+// `Usage:` the lowercase words after the tool name (the first token of the first
+// usage line) are bold, the name and the arguments are not, on each line that
+// begins with that name; no blank lines come between usage lines. The blank
+// lines are always added, the bold only where runtimeBoldEnabled() allows it. A
+// header shaped otherwise prints as written.
+const RUNTIME_HELP_TITLE = /^([^\s:]+)(?=: | [-–—] )/;
 const RUNTIME_HELP_HEADING = /^[A-Z][^:]*:$/;
 const RUNTIME_HELP_COMMAND = /^ {2}([a-z][a-z0-9._:-]*(?: [a-z][a-z0-9._:-]*){0,2})( {2,}\S.*)$/;
 const RUNTIME_HELP_FLAG = '-[^\\s,]+(?: <[^<>]+>| \\[[^[\\]]+\\])*';
@@ -1024,13 +1029,17 @@ function helpText() {
     raw.push(l.slice(3));
   }
   const bold = runtimeBoldWith(runtimeBoldEnabled());
-  const out = [];
+  const out = [''];
   let section = null; // the heading of the section this line is in, null outside one
   let block = null; // 'entry' or 'prose' once a line of two spaces has begun a block in the section
   let tool = null; // in Usage:, the first token of the first usage line
   let afterHeading = false; // the line after a heading gets a blank line before it
-  const blank = () => { if (out.at(-1) !== '') out.push(''); };
-  for (const l of raw) {
+  const blank = (count = 1) => {
+    let have = 0;
+    while (out.at(-1 - have) === '') have += 1;
+    for (; have < count; have += 1) out.push('');
+  };
+  for (const [i, l] of raw.entries()) {
     if (afterHeading && l !== '') blank();
     afterHeading = false;
     const heading = RUNTIME_HELP_HEADING.test(l);
@@ -1041,16 +1050,22 @@ function helpText() {
       section = heading ? l : null;
     }
     if (heading) {
+      if (out.some((o) => o !== '')) blank(2);
       out.push(bold(l));
       afterHeading = true;
+      continue;
+    }
+    const title = i === 0 ? RUNTIME_HELP_TITLE.exec(l) : null;
+    if (title) {
+      out.push(`${bold(title[1])}${l.slice(title[1].length)}`);
       continue;
     }
     if (section === 'Usage:') {
       const usage = RUNTIME_HELP_USAGE.exec(l);
       if (usage && (tool === null || usage[1] === tool)) {
         tool = usage[1];
-        const name = usage[1] + usage[2];
-        out.push(`  ${bold(name)}${l.slice(2 + name.length)}`);
+        const verbs = usage[2].slice(1);
+        out.push(`  ${usage[1]}${verbs ? ` ${bold(verbs)}` : ''}${l.slice(2 + usage[1].length + usage[2].length)}`);
       } else {
         out.push(l);
       }

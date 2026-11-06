@@ -627,7 +627,7 @@ test('the runtime fence is byte-identical in the skeleton and the scaffolder', (
 });
 
 // Adopted tools pin this hash (the block, both marker lines included, no trailing newline).
-const FENCE_SHA256 = 'cd2bde6f39ab4249c2d4e15329a58d616c509ade2563a37658e780f1a4a0adbd';
+const FENCE_SHA256 = '30e4ef6c1de9bb86691ce38616cbf5e780ee77d8bf89270bdc658082503ac52e';
 
 test('the runtime fence hashes to the pinned sha256 in both files', () => {
   for (const file of [NEW_TOOL, SKELETON]) {

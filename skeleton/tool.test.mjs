@@ -1644,22 +1644,32 @@ test('mark: the eight-character cap counts what a reader sees, so a joined emoji
   assert.equal(await line(`${flag}${'a'.repeat(7)}b`), `    ${flag}${'a'.repeat(7)} s`);
 });
 
-test('--help: a heading is bold with a blank line after it, every entry name is bold, a usage line bolds its tool and subcommand, and a blank line separates the blocks', () => {
+test('--help: it opens with a blank line and a bold tool name, a heading is bold with two blank lines before it and one after, every entry name is bold, a usage line bolds its subcommand, and a blank line separates the blocks', () => {
   const plain = run(['--help'], { env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined } });
   assert.doesNotMatch(plain.stdout, /\x1b/);
   const lines = plain.stdout.split('\n');
   const at = (re) => lines.findIndex((l) => re.test(l));
   const headings = ['Usage:', 'Commands:', 'Output modes (all rendered from the same item objects):', 'Flags:', 'Conventions that make it safe unattended:', 'Exit codes:'];
-  for (const heading of headings) assert.equal(lines[lines.indexOf(heading) + 1], '', heading); // a blank line after every heading
+  assert.equal(lines[0], ''); // the help does not run into the command that asked for it
+  assert.notEqual(lines[1], '');
+  for (const heading of headings) {
+    const at0 = lines.indexOf(heading);
+    assert.equal(lines[at0 + 1], '', heading); // one blank line after every heading
+    assert.notEqual(lines[at0 + 2], '', heading);
+    assert.deepEqual(lines.slice(at0 - 2, at0), ['', ''], heading); // two before it, the first one after the intro too
+    assert.notEqual(lines[at0 - 3], '', heading); // never three
+  }
   const inspect = at(/^ {2}inspect {2,}\S/);
   const apply = at(/^ {2}apply {2,}\S/);
+  assert.equal(lines[inspect - 1], ''); // the blank after the heading
   assert.equal(lines[inspect - 2], 'Commands:');
   assert.equal(lines[apply - 1], ''); // the blank closing inspect's block
   assert.match(lines[apply - 2], /writes\. `--go` is ignored here with a warning\.$/); // inspect's last text line, then the blank
-  assert.equal(lines[at(/^Output modes/) - 1], ''); // the blank closing apply's block, once
-  assert.doesNotMatch(plain.stdout, /\n\n\n/);
+  assert.deepEqual(lines.slice(at(/^Output modes/) - 2, at(/^Output modes/)), ['', '']); // apply's block ends the section: two blanks, not three
+  assert.match(lines[at(/^Output modes/) - 3], /\S/);
+  assert.doesNotMatch(plain.stdout, /\n\n\n\n/);
   // A usage line stays tight; only the heading is followed by a blank.
-  assert.equal(lines.slice(at(/^Usage:/) + 2, at(/^Commands:/) - 1).filter((l) => l === '').length, 0);
+  assert.equal(lines.slice(at(/^Usage:/) + 2, at(/^Commands:/) - 2).filter((l) => l === '').length, 0);
   // Prose at an entry's indent is a block of its own: a blank before it, none inside it.
   assert.equal(lines[at(/^ {2}Every text mode then ends/) - 1], '');
   assert.notEqual(lines[at(/^ {2}In --json the same advice/) - 1], '');
@@ -1673,13 +1683,15 @@ test('--help: a heading is bold with a blank line after it, every entry name is 
   assert.equal(unbold(forced.stdout), plain.stdout);
   const spans = [...forced.stdout.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
   const tool = /^ {2}(\S+) inspect /m.exec(plain.stdout)[1]; // the tool's name as its header spells it
-  const names = [`${tool} inspect`, `${tool} apply`, tool, 'inspect', 'apply', '(default)', '--brief', '--json', '--quiet',
+  const names = [tool, 'inspect', 'apply', '(default)', '--brief', '--json', '--quiet',
     '--go', '--yes, -y', '--note <text>', '--help, -h', '--version', '--cheat', '0', '1', '2', '3'];
   for (const s of spans) assert.ok(headings.includes(s) || names.includes(s), `unexpected bold span: ${s}`); // never a description
   for (const s of [...headings, ...names]) assert.ok(spans.includes(s), `not bold: ${s}`);
-  assert.ok(forced.stdout.includes(`\n  ${BOLD(`${tool} inspect`)} <path>...`)); // the tool and subcommand, not the arguments
-  assert.ok(forced.stdout.includes(`\n  ${BOLD(`${tool} apply`)}   <path>...`));
-  assert.ok(forced.stdout.includes(`\n  ${BOLD(tool)} --help | --version | --cheat\n`));
+  assert.ok(forced.stdout.startsWith(`\n${BOLD(tool)} - `)); // the name where the first line opens
+  assert.equal(spans.filter((s) => s === tool).length, 1); // and nowhere else: not in the usage lines
+  assert.ok(forced.stdout.includes(`\n  ${tool} ${BOLD('inspect')} <path>...`)); // the subcommand, not the tool name or the arguments
+  assert.ok(forced.stdout.includes(`\n  ${tool} ${BOLD('apply')}   <path>...`));
+  assert.ok(forced.stdout.includes(`\n  ${tool} --help | --version | --cheat\n`)); // no subcommand, nothing bold
   assert.ok(forced.stdout.includes(`\n  ${BOLD('inspect')}   Read-only.`));
   assert.ok(forced.stdout.includes(`\n  ${BOLD('--yes, -y')}   apply:`)); // the whole left column, comma and all
   assert.ok(forced.stdout.includes(`\n  ${BOLD('--note <text>')}\n`)); // a flag alone on its line
@@ -1727,7 +1739,9 @@ test('--help: a header shaped otherwise still prints as written, with only blank
     ];
     const plain = helpWith(dir, 'odd', header);
     assert.equal(plain, [
+      '',
       'odd - a tool whose header is shaped differently.',
+      '',
       '',
       'Commands:',
       '',
@@ -1751,6 +1765,7 @@ test('--help: a header shaped otherwise still prints as written, with only blank
       'Mid: a colon in the middle is not a heading either:',
       '  Indented: a description line ending in a colon is not one:',
       '',
+      '',
       'Trailing heading:',
       '',
       '  six      Not in Commands.',
@@ -1758,7 +1773,8 @@ test('--help: a header shaped otherwise still prints as written, with only blank
     ].join('\n'));
     const forced = helpWith(dir, 'odd', header, { FORCE_COLOR: '1' });
     assert.equal(unbold(forced), plain);
-    assert.ok(forced.includes(`\n${BOLD('Commands:')}\n\n  ${BOLD('one')}      An entry`));
+    assert.ok(forced.startsWith(`\n${BOLD('odd')} - a tool`)); // the name that opens the first line
+    assert.ok(forced.includes(`\n\n\n${BOLD('Commands:')}\n\n  ${BOLD('one')}      An entry`));
     assert.ok(forced.includes(`\n  ${BOLD('two-part')}   An entry`));
     assert.ok(forced.includes(`\n  ${BOLD('four x')}  An entry`));
     assert.ok(forced.includes(`\n  ${BOLD('five')}      Under`));
@@ -1781,6 +1797,7 @@ test('--help: in every section the entry name is bold and a blank line separates
       '  spaced inspect <path>...      read-only',
       '  spaced apply   <path>... [--go]',
       '                                mutating',
+      '  spaced queue add <item>       a subcommand of two words',
       '  Both commands take paths.',
       '  spaced --help | --version',
       '',
@@ -1823,21 +1840,26 @@ test('--help: in every section the entry name is bold and a blank line separates
     ];
     const plain = helpWith(dir, 'spaced', header);
     assert.equal(plain, [
+      '',
       'spaced - every section that lists entries.',
+      '',
       '',
       'Usage:',
       '',
       '  spaced inspect <path>...      read-only',
       '  spaced apply   <path>... [--go]',
       '                                mutating',
+      '  spaced queue add <item>       a subcommand of two words',
       '  Both commands take paths.',
       '  spaced --help | --version',
+      '',
       '',
       'Commands:',
       '',
       '  inspect   Read-only.',
       '',
       '  apply     Mutating.',
+      '',
       '',
       'Output modes (all from one list):',
       '',
@@ -1851,6 +1873,7 @@ test('--help: in every section the entry name is bold and a blank line separates
       '  Every text mode ends with a next: line, for example',
       '    next: done  (x)',
       '  --json cannot be combined with --quiet.',
+      '',
       '',
       'Flags:',
       '',
@@ -1869,10 +1892,12 @@ test('--help: in every section the entry name is bold and a blank line separates
       '  --since, --day, --all',
       '              a list of flags alone on its line is not an entry.',
       '',
+      '',
       'Conventions:',
       '',
       '  - a bullet is not an entry,',
       '  - nor is the next one.',
+      '',
       '',
       'Exit codes:',
       '',
@@ -1891,7 +1916,7 @@ test('--help: in every section the entry name is bold and a blank line separates
     assert.equal(unbold(forced), plain);
     const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
     assert.deepEqual(spans, [
-      'Usage:', 'spaced inspect', 'spaced apply', 'spaced',
+      'spaced', 'Usage:', 'inspect', 'apply', 'queue add',
       'Commands:', 'inspect', 'apply',
       'Output modes (all from one list):', '(default)', '--brief', '--quiet',
       'Flags:', '--go', '-y, --yes', '--note <text>', '--out <dir>',
@@ -1902,7 +1927,7 @@ test('--help: in every section the entry name is bold and a blank line separates
   }
 });
 
-test('--help: a margin lead-in is a heading whatever it holds (an apostrophe, a digit, parentheses), takes one blank line and never two, and its entries are bold', () => {
+test('--help: a margin lead-in is a heading whatever it holds (an apostrophe, a digit, parentheses), takes two blank lines before it and one after, and its entries are bold', () => {
   const dir = tmp();
   try {
     const header = [
@@ -1928,11 +1953,14 @@ test('--help: a margin lead-in is a heading whatever it holds (an apostrophe, a 
     ];
     const plain = helpWith(dir, 'lead', header);
     assert.equal(plain, [
+      '',
       'lead - lead-ins written as headings.',
+      '',
       '',
       'The one exception to mode 600 (D764):',
       '',
       'Prose directly under it.',
+      '',
       '',
       "Creating a new key is the person's job:",
       '',
@@ -1940,13 +1968,17 @@ test('--help: a margin lead-in is a heading whatever it holds (an apostrophe, a 
       '',
       '  OpenAI      https://example.test/b',
       '',
+      '',
       'Creating a key isn’t this tool’s job:',
+      '',
       '',
       'Already spaced:',
       '',
       '  Google      https://example.test/c',
       '',
+      '',
       'Exit:',
+      '',
       '',
       'Another:',
       '',
@@ -1955,14 +1987,29 @@ test('--help: a margin lead-in is a heading whatever it holds (an apostrophe, a 
       '  1  a finding',
       '',
     ].join('\n'));
-    assert.doesNotMatch(plain, /\n\n\n/);
+    assert.doesNotMatch(plain, /\n\n\n\n/); // two blank lines before a heading, never three
     const forced = helpWith(dir, 'lead', header, { FORCE_COLOR: '1' });
     assert.equal(unbold(forced), plain);
     const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
     assert.deepEqual(spans, [
-      'The one exception to mode 600 (D764):', "Creating a new key is the person's job:", 'Anthropic', 'OpenAI',
+      'lead', 'The one exception to mode 600 (D764):', "Creating a new key is the person's job:", 'Anthropic', 'OpenAI',
       'Creating a key isn’t this tool’s job:', 'Already spaced:', 'Google', 'Exit:', 'Another:', '0', '1',
     ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--help: the tool\'s name is bold where it opens the first line (before a hyphen, an en or em dash, or a colon), and nothing else is', () => {
+  const dir = tmp();
+  try {
+    for (const [first, bolded] of [['named - a hyphen.', 'named'], ['named – an en dash.', 'named'], ['named — an em dash.', 'named'], ['named: a colon.', 'named'],
+      ['two words - the name is one word.', null], ['No dash and no colon here.', null], ['named-with-hyphens - kept whole.', 'named-with-hyphens']]) {
+      const forced = helpWith(dir, 'title', [first, '', 'second - a later line is not the title.', 'Notes:', '  one   text'], { FORCE_COLOR: '1' });
+      const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
+      assert.deepEqual(spans, bolded ? [bolded, 'Notes:', 'one'] : ['Notes:', 'one'], first);
+      assert.ok(forced.startsWith('\n'), first); // and the help opens with a blank line either way
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
