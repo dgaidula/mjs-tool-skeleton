@@ -149,13 +149,17 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     guard is its last statement, so every top-level binding is initialised
     before `main()` runs), carries its own namespaced imports, holds no
     tool-specific code and no `<tool>` placeholder. A contract change bumps
-    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version).
+    the marker version and `CONTRACT` together (v3 and `mjs-tool/3` did this in 0.4.0, for the `--brief` lines; a revision that leaves the brief lines, the `--json` keys and the exit codes alone keeps the version). A revision has no number of its own: it is the skeleton release that carries it and the block’s sha256, which the fence test pins. 0.5.0 is the first, for the human layout and `--help` (invariant 15): the marker stays `runtime v3`, `CONTRACT` stays `mjs-tool/3`, the skeleton moves to a new minor version, and the sha256 moves from `caf3bd4c…` to `27679d92…`.
 
-13. **Text output is frozen, except the `--brief` item line, which has one rule.**
-    The summary line and the human blocks are byte-identical to what 0.1.0
-    printed, the `(dry run: pass --go to apply)` suffix included; the only v2
-    addition is the final `next:` line, whose form differs by mode (invariant
-    10). The golden test locks them — change them only on Dan’s say-so. The
+13. **Text output is frozen, except the `--brief` item line, which has one rule, and the human layout, which changed once.**
+    The summary line is byte-identical to what 0.1.0 printed, the
+    `(dry run: pass --go to apply)` suffix included, and so is the text of each
+    human item block (the glyph and name, the summary, the `lines`, the reason).
+    What came after: the final `next:` line (v2), whose form differs by mode
+    (invariant 10), and the layout of invariant 15 (0.5.0, Dan’s decision of
+    2026-11-06, his words in CHANGELOG): a blank line between items, bold, and
+    the optional mark. The golden test locks all of it — change it only on Dan’s
+    say-so. The
     brief item line is `<verdict> <summary>  <name>`, with no padding and no
     glyph (v3, 0.4.0; Dan’s decision of 2026-10-24: `--brief` is to cut output
     noise and token use), and a non-`ok` reason follows in parentheses, cut at
@@ -167,8 +171,9 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     comparison is in bytes; a literal cut there would make the line longer than
     the human reason line), and a `refuse` item with an empty reason is exactly
     as long as its human block (the verdict word is six letters), so the human
-    blank line is the whole margin: the brief output is one byte shorter, for
-    any number of such items. The size test carries an empty reason for that
+    blank lines are the whole margin (one after the last item, one between
+    items): the brief output is one byte shorter for one such item, and one byte
+    shorter again for each more. The size test carries an empty reason for that
     zero-margin case. The cut counts the reason’s own code points, before
     escaping, so it never falls inside an escape, and N counts the same way.
 
@@ -185,6 +190,50 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
     tests, and relied on by the `cheat-pages` collector. A change to that
     shape is a change to every adopted tool’s card. The adoption steps are
     ADOPTING.md §8.
+
+15. **Bold, marks and help spacing are human layout, and only that** (0.5.0; Dan,
+    2026-11-06: “in help have the command names in bold and then after the
+    text for that section an extra line break. list: bold first line …; then
+    put all the labels like ‘key:’ etc in bold; some system of emojis after the
+    ‘ok:’ depending on how much time is left; then a return before the next
+    key”, then “can the emoji go first … the emojis will line up vertically in
+    a long list”). The default human mode and `--help` carry it; `--brief`,
+    `--quiet` and `--json` never do, byte for byte (a test holds them equal
+    under FORCE_COLOR, and the 0.5.0 pass proved them identical to 0ef6970).
+    - **Bold** is SGR 1 on, 22 off, and only where `boldEnabled()` says so: a
+      TTY without a non-empty `NO_COLOR`, or a `FORCE_COLOR` that is non-empty
+      and not `0` or `false` (it outranks `NO_COLOR`, as in Node). Piped
+      output has no escape byte. Sources are in the comment above it.
+    - **Escape first, then bold.** Every item string goes through `printable()`
+      and only then into `bold()` or `boldLabels()`, so the text holds no ESC
+      and cannot open, close or fake a bold span. The injection test holds that
+      for every shape it can think of; never bold raw text.
+    - **A label** is one to three lowercase words (digits after the first
+      letter, dots, hyphens) ending in a colon that is followed by a space or
+      the end of the line, at the start of the summary, a `lines` entry or the
+      reason line, or after three or more spaces (`file mode: 600   directory
+      mode: 700`). A URL, a time, a Windows path, a capital or a sentence is
+      not one. The name after the glyph and the `summary:` label are bold too.
+      `next:` is not.
+    - **Layout:** a blank line between items and exactly one before `summary:`,
+      colour or not; nothing before the first item.
+    - **`item.mark`** is a short string (a coloured dot, say) the tool sets,
+      printed first on the summary line as `    <mark> <summary>`. At most
+      eight characters (code points) kept; a mark that is not a string, is blank
+      or holds a control character (TAB included) is dropped whole. It is never
+      in `--brief`, `--quiet` or `--json` (`jsonItem()` does not copy it), so the
+      facts it stands for belong in `data`, and the marks of one tool should
+      share a column width.
+    - **`--help`:** a heading is a capitalised phrase ending in a colon, on its
+      own line (`Usage:`, `Output modes (all rendered from the same item
+      objects):`), and is bold. In the `Commands:` section an entry is two
+      spaces, a lowercase name (up to three words), two or more spaces and its
+      text; the name is bold and a blank line follows each entry’s block. A
+      header shaped otherwise prints as written. The skeleton’s own header keeps
+      each heading on one line for this reason.
+    - **Tests:** `node --test` sets `FORCE_COLOR=1` for its files on a terminal,
+      so both test files delete `FORCE_COLOR` and `NO_COLOR` before they spawn
+      anything. Keep that in any new test file that runs a tool in human mode.
 
 ## Flag values: `requireValue()`
 
@@ -292,7 +341,7 @@ also how the suite proves `next.argv` runs without one. Auto-run is tested
 the same way (the `AUTO_RUN` anchor turns the default `ask` into `run`),
 and the load-time hook check from `withRuntime()`, a file of bare hook
 declarations followed by the tool’s own fence. The 0.1.0 golden lines
-(human and summary) and the v3 brief lines live inline in `test/new-tool.test.mjs`.
+(summary), the human layout of 0.5.0 and the v3 brief lines live inline in `test/new-tool.test.mjs`.
 
 The y/N prompt is tested with injected streams; the real TTY path is a manual
 check (a pty test proved timing-sensitive under `script`). From a temp dir

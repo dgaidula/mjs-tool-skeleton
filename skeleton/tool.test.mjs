@@ -17,6 +17,12 @@ const NAME = basename(TOOL_PATH).replace(/\.mjs$/, '');
 
 const NODE = process.execPath; // the head of every next.argv, with the script after it
 
+// Whether output is bold is the test's choice, never the parent's: on a terminal
+// `node --test` sets FORCE_COLOR=1 for the files it runs, and a child that
+// inherited it would print bold into every human-mode run below.
+delete process.env.FORCE_COLOR;
+delete process.env.NO_COLOR;
+
 function run(args, opts = {}) {
   return spawnSync(NODE, [TOOL_PATH, ...args], { encoding: 'utf8', timeout: 15000, ...opts });
 }
@@ -1355,7 +1361,7 @@ test('brief is never longer than human, for every verdict, summary, name and rea
       }
     }
   }
-  // Several refuse items with no reason, beside others: the human blank line is paid back only once.
+  // Several refuse items with no reason, beside others: the human blank lines (after the last item and between items) are the margin.
   const refused = { ...OK_ITEM, verdict: 'refuse', reason: '' };
   for (const items of [[refused, refused], [refused, OK_ITEM, refused, refused], [OK_ITEM, refused, { ...OK_ITEM, verdict: 'warn', reason: '' }]]) {
     const brief = renderIn(report, { items, next: nextStep('done', 'x'), mode: 'brief' });
@@ -1431,5 +1437,297 @@ test('brief: the reason cut never falls inside an escape (an ESC or a \\u escape
       assert.equal(out, `${head}${kept}… (+${raw.length - 160} chars; --json for all))`, `${esc} k=${k}`);
       assert.ok(!hasControl(out), `${esc} k=${k}`);
     }
+  }
+});
+
+// ---- human layout: blank lines, bold labels, marks, --help (Dan, 2026-11-06) ----
+
+const BOLD = (s) => `\x1b[1m${s}\x1b[22m`;
+
+// Run fn with stdout a terminal or not and FORCE_COLOR / NO_COLOR as given
+// (neither is set otherwise, whatever the parent's environment holds), then put
+// everything back.
+function withTerminal({ tty = false, env = {} }, fn) {
+  const saved = Object.fromEntries(['FORCE_COLOR', 'NO_COLOR'].map((k) => [k, process.env[k]]));
+  const own = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+  for (const k of Object.keys(saved)) delete process.env[k];
+  Object.assign(process.env, env);
+  Object.defineProperty(process.stdout, 'isTTY', { value: tty, configurable: true, writable: true });
+  try {
+    return fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    if (own) Object.defineProperty(process.stdout, 'isTTY', own); else delete process.stdout.isTTY;
+  }
+}
+
+// What report() prints for these items in a mode, in-process.
+async function renderMode(items, mode, terminal = {}, extra = {}) {
+  const { report, nextStep } = await import(TOOL_URL.href);
+  return withTerminal(terminal, () => renderIn(report, { items, next: nextStep('done', 'x'), mode, ...extra }));
+}
+
+// The same text with every bold pair the renderer wrote taken out.
+const unbold = (text) => text.replace(/\x1b\[1m([^\x1b]*)\x1b\[22m/g, '$1');
+
+test('human: a blank line between items, exactly one before the summary, none at the start or doubled', async () => {
+  const a = { ...OK_ITEM, name: 'a.txt', summary: 'one', lines: ['kind: file'] };
+  const b = { ...OK_ITEM, name: 'b.txt', summary: 'two', verdict: 'warn', reason: 'empty' };
+  const c = { ...OK_ITEM, name: 'c.txt', summary: 'three' };
+  const out = await renderMode([a, b, c], 'human');
+  assert.equal(out, [
+    '✓ a.txt', '    one', '    kind: file', '',
+    '⚠ b.txt', '    two', '    warn: empty', '',
+    '✓ c.txt', '    three', '',
+    'summary: ok=2 warn=1 skip=0 refuse=0 fail=0',
+    'next: done  (x)', '',
+  ].join('\n'));
+  const one = await renderMode([a], 'human');
+  assert.equal(one, ['✓ a.txt', '    one', '    kind: file', '', 'summary: ok=1 warn=0 skip=0 refuse=0 fail=0', 'next: done  (x)', ''].join('\n'));
+  for (const text of [out, one]) assert.doesNotMatch(text, /\n\n\n/);
+});
+
+test('bold: on for a terminal, off when piped, under NO_COLOR and for FORCE_COLOR=0; FORCE_COLOR forces it on and outranks NO_COLOR', async () => {
+  const item = { ...OK_ITEM, name: 'a.txt', summary: 'ok: 12d left', lines: ['kind: file'], verdict: 'warn', reason: 'empty' };
+  const plain = await renderMode([item], 'human');
+  assert.doesNotMatch(plain, /\x1b/);
+  const bolded = await renderMode([item], 'human', { tty: true });
+  assert.equal(bolded, plain.replace('a.txt', BOLD('a.txt')).replace('ok:', BOLD('ok:')).replace('kind:', BOLD('kind:'))
+    .replace('warn: empty', `${BOLD('warn:')} empty`).replace('summary:', BOLD('summary:')));
+  assert.equal(unbold(bolded), plain);
+  const cases = [
+    [{ tty: true, env: { NO_COLOR: '1' } }, false, 'NO_COLOR on a terminal'],
+    [{ tty: true, env: { NO_COLOR: '0' } }, false, 'NO_COLOR=0 still counts: any non-empty value'],
+    [{ tty: true, env: { NO_COLOR: '' } }, true, 'an empty NO_COLOR is unset'],
+    [{ tty: false, env: { FORCE_COLOR: '1' } }, true, 'FORCE_COLOR=1 piped'],
+    [{ tty: false, env: { FORCE_COLOR: 'yes' } }, true, 'any other non-empty FORCE_COLOR is on'],
+    [{ tty: false, env: { FORCE_COLOR: '' } }, false, 'an empty FORCE_COLOR is unset'],
+    [{ tty: true, env: { FORCE_COLOR: '0' } }, false, 'FORCE_COLOR=0 turns it off on a terminal'],
+    [{ tty: true, env: { FORCE_COLOR: 'false' } }, false, 'FORCE_COLOR=false turns it off'],
+    [{ tty: true, env: { FORCE_COLOR: '1', NO_COLOR: '1' } }, true, 'FORCE_COLOR outranks NO_COLOR'],
+    [{ tty: false, env: { FORCE_COLOR: '0', NO_COLOR: '1' } }, false, 'both off'],
+  ];
+  for (const [terminal, on, why] of cases) {
+    assert.equal(await renderMode([item], 'human', terminal) === bolded, on, why);
+  }
+});
+
+test('bold: never in --brief, --quiet or --json, whatever the terminal says', async () => {
+  const items = [{ ...OK_ITEM, summary: 'ok: fine', lines: ['kind: file'], mark: '🟢' },
+    { ...OK_ITEM, name: 'b', verdict: 'warn', reason: 'empty' }];
+  for (const mode of ['brief', 'quiet', 'json']) {
+    const calm = await renderMode(items, mode);
+    const loud = await renderMode(items, mode, { tty: true, env: { FORCE_COLOR: '1' } });
+    assert.equal(loud, calm, mode);
+    assert.doesNotMatch(loud, /\x1b/, mode);
+  }
+});
+
+test('labels: bold at the start of a line and after three or more spaces; a URL, a time, a path, a capital or a sentence is not', async () => {
+  const lines = [
+    'variable: ANTHROPIC_API_KEY',
+    'file mode: 600   directory mode: 700',
+    'last rotated: 2026-11-06T09:00:00Z',
+    'url: https://example.com:8080/a:b',
+    'sha256: ab12',
+    'closing:',
+    'a.b-c: dotted and hyphenated',
+    'https://example.com/a: not a label',
+    '12:30 is a time',
+    'at 12:30 sharp',
+    'C:\\temp\\x is a path',
+    'Note: capitalised is not a label',
+    'a sentence, with a comma: not a label',
+    'one two three four: four words is not a label',
+    'key:value with no space is not a label',
+    '1st: starts with a digit',
+    ': nothing before it',
+    'two spaces  only: do not make a second label',
+    'size: 5 B   see: the second label',
+    'size: 5 B and a sentence   note again: three words max here',
+  ];
+  const out = await renderMode([{ ...OK_ITEM, lines }], 'human', { tty: true, env: {} });
+  const shown = out.split('\n').slice(2, 2 + lines.length).map((l) => l.slice(4));
+  assert.deepEqual(shown, [
+    `${BOLD('variable:')} ANTHROPIC_API_KEY`,
+    `${BOLD('file mode:')} 600   ${BOLD('directory mode:')} 700`,
+    `${BOLD('last rotated:')} 2026-11-06T09:00:00Z`,
+    `${BOLD('url:')} https://example.com:8080/a:b`,
+    `${BOLD('sha256:')} ab12`,
+    BOLD('closing:'),
+    `${BOLD('a.b-c:')} dotted and hyphenated`,
+    'https://example.com/a: not a label',
+    '12:30 is a time',
+    'at 12:30 sharp',
+    'C:\\temp\\x is a path',
+    'Note: capitalised is not a label',
+    'a sentence, with a comma: not a label',
+    'one two three four: four words is not a label',
+    'key:value with no space is not a label',
+    '1st: starts with a digit',
+    ': nothing before it',
+    'two spaces  only: do not make a second label',
+    `${BOLD('size:')} 5 B   ${BOLD('see:')} the second label`,
+    `${BOLD('size:')} 5 B and a sentence   ${BOLD('note again:')} three words max here`,
+  ]);
+});
+
+test('bold is applied after escaping: an item cannot open, close or fake a bold sequence or any other escape', async () => {
+  const evil = [
+    '\x1b[22m', '\x1b[1m', '\x1b[0m', '\x1b[31mred', '\x1b]0;title\x07', '\x9b1m', 'ok\x1b[22m: x', '\x1b[1mkey\x1b[22m: v',
+    'key:\x1b[22m   other\x1b[1m: v',
+  ];
+  for (const text of evil) {
+    const item = { ...OK_ITEM, name: text, summary: text, lines: [text, `key: ${text}`], reason: text, verdict: 'warn', mark: text };
+    const forced = await renderMode([item, item], 'human', { tty: true });
+    const plain = await renderMode([item, item], 'human');
+    // Every ESC in the output is one of the renderer's own bold pairs, and taking those out leaves the plain text.
+    assert.equal(unbold(forced), plain, JSON.stringify(text));
+    assert.doesNotMatch(plain, /[\x00-\x08\x0b-\x1f\x7f-\x9f]/, JSON.stringify(text));
+    assert.doesNotMatch(unbold(forced), /[\x00-\x08\x0b-\x1f\x7f-\x9f]/, JSON.stringify(text));
+  }
+  // The escaped text of an ESC is a printable backslash sequence inside the bold, not a live one.
+  const named = await renderMode([{ ...OK_ITEM, name: 'a\x1b[22mb' }], 'human', { tty: true });
+  assert.ok(named.includes(`✓ ${BOLD('a\\x1b[22mb')}\n`), named);
+});
+
+test('mark: printed first on the summary line, in human only; never in --brief, --quiet or --json', async () => {
+  const marked = { ...OK_ITEM, summary: 'ok: 120d left', mark: '🟢' };
+  const bare = { ...OK_ITEM, summary: 'ok: 120d left' };
+  const out = await renderMode([marked, bare], 'human');
+  assert.equal(out.split('\n').slice(0, 5).join('\n'), '✓ a.txt\n    🟢 ok: 120d left\n\n✓ a.txt\n    ok: 120d left');
+  const bolded = await renderMode([marked], 'human', { tty: true });
+  assert.ok(bolded.includes(`\n    🟢 ${BOLD('ok:')} 120d left\n`), bolded); // the mark is not bolded; the label after it is
+  for (const mode of ['brief', 'quiet', 'json']) {
+    assert.equal(await renderMode([marked], mode), await renderMode([bare], mode), mode);
+    assert.doesNotMatch(await renderMode([marked], mode), /🟢|mark/, mode);
+  }
+});
+
+test('mark: at most eight characters; a blank, non-string or control-bearing mark is dropped; a joined emoji sequence stays whole', async () => {
+  const line = async (mark) => (await renderMode([{ ...OK_ITEM, summary: 's', mark }], 'human')).split('\n')[1];
+  assert.equal(await line('a'.repeat(8)), '    aaaaaaaa s');
+  assert.equal(await line('a'.repeat(9)), '    aaaaaaaa s'); // cut at eight characters
+  assert.equal(await line('b'.repeat(500)), '    bbbbbbbb s');
+  const family = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467); // five code points
+  assert.equal(await line(family), `    ${family} s`);
+  assert.equal(await line(` ${String.fromCodePoint(0x1f7e2)} `), `    ${String.fromCodePoint(0x1f7e2)} s`); // trimmed
+  const flagless = String.fromCodePoint(0x1f600).repeat(9); // cut by code point, never inside a surrogate pair
+  assert.equal(await line(flagless), `    ${String.fromCodePoint(0x1f600).repeat(8)} s`);
+  for (const dropped of ['', '   ', 7, {}, ['x'], null, true, 'a\nb', 'a\rb', 'a\tb', '\x1b[31m', 'x\x1b', '\x07', '\x7f', '\x85', 'a\u2028b', 'a\u202eb', 'a\u2066b']) {
+    assert.equal(await line(dropped), '    s', JSON.stringify(dropped));
+  }
+});
+
+test('--help: headings and command names are bold on a terminal, and a blank line follows each command block', () => {
+  const plain = run(['--help'], { env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined } });
+  assert.doesNotMatch(plain.stdout, /\x1b/);
+  const lines = plain.stdout.split('\n');
+  const at = (re) => lines.findIndex((l) => re.test(l));
+  const inspect = at(/^ {2}inspect {2,}\S/);
+  const apply = at(/^ {2}apply {2,}\S/);
+  assert.ok(inspect > 0 && apply > inspect);
+  assert.equal(lines[inspect - 1], 'Commands:'); // no blank between a heading and its first entry
+  assert.equal(lines[apply - 1], ''); // the blank closing inspect's block
+  assert.match(lines[apply - 2], /writes\. `--go` is ignored here with a warning\.$/); // inspect's last text line, then the blank
+  assert.equal(lines[at(/^Output modes/) - 1], ''); // the blank closing apply's block, once
+  assert.doesNotMatch(plain.stdout, /\n\n\n/);
+
+  const forced = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: undefined } });
+  assert.equal(unbold(forced.stdout), plain.stdout);
+  for (const heading of ['Usage:', 'Commands:', 'Flags:', 'Exit codes:', 'Output modes (all rendered from the same item objects):']) {
+    assert.ok(forced.stdout.includes(`\n${BOLD(heading)}\n`), heading);
+  }
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('inspect')}   Read-only.`));
+  assert.ok(forced.stdout.includes(`\n  ${BOLD('apply')}     Mutating.`));
+  assert.doesNotMatch(forced.stdout, /\x1b\[1m {2}/); // nothing else is bold: no usage line, no flag
+  const quiet = run(['--help'], { env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: '1' } });
+  assert.equal(quiet.stdout, forced.stdout); // FORCE_COLOR outranks NO_COLOR
+  const off = run(['--help'], { env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: undefined } });
+  assert.equal(off.stdout, plain.stdout);
+});
+
+test('--help: a header shaped otherwise still prints as written, with only the blank lines added', () => {
+  const dir = tmp();
+  try {
+    const header = [
+      'odd - a tool whose header is shaped differently.',
+      '',
+      'Commands:',
+      '  one      An entry with a second line under it.',
+      '           The second line.',
+      '  two-part   An entry with a hyphen in its name.',
+      '',
+      '  three',
+      '      a name alone on its line is not an entry.',
+      '  four x  An entry whose name is two words.',
+      '  Capital  A capital is not a command name, so this is part of the block above.',
+      'Back at the margin without a blank.',
+      '  five      Outside the section, so no spacing and no bold.',
+      '',
+      'Notes: these are not a heading',
+      'Trailing heading:',
+      '  six      Not in Commands.',
+    ].map((l) => `//${l ? ` ${l}` : ''}`);
+    const src = readFileSync(TOOL_PATH, 'utf8').split('\n');
+    const end = src.findIndex((l, i) => i > 0 && !l.startsWith('//'));
+    const copy = path.join(dir, 'odd.mjs');
+    writeFileSync(copy, [src[0], ...header, ...src.slice(end)].join('\n'));
+    const show = (env) => spawnSync(NODE, [copy, '--help'], { encoding: 'utf8', timeout: 10000, env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env } }).stdout;
+    const plain = show({});
+    assert.equal(plain, [
+      'odd - a tool whose header is shaped differently.',
+      '',
+      'Commands:',
+      '  one      An entry with a second line under it.',
+      '           The second line.',
+      '',
+      '  two-part   An entry with a hyphen in its name.',
+      '',
+      '  three',
+      '      a name alone on its line is not an entry.',
+      '',
+      '  four x  An entry whose name is two words.',
+      '  Capital  A capital is not a command name, so this is part of the block above.',
+      '',
+      'Back at the margin without a blank.',
+      '  five      Outside the section, so no spacing and no bold.',
+      '',
+      'Notes: these are not a heading',
+      'Trailing heading:',
+      '  six      Not in Commands.',
+      '',
+    ].join('\n'));
+    const forced = show({ FORCE_COLOR: '1' });
+    assert.equal(unbold(forced), plain);
+    assert.ok(forced.includes(`\n${BOLD('Commands:')}\n  ${BOLD('one')}      An entry`));
+    assert.ok(forced.includes(`\n  ${BOLD('two-part')}   An entry`));
+    assert.ok(forced.includes(`\n  ${BOLD('four x')}  An entry`));
+    assert.ok(forced.includes(`\n${BOLD('Trailing heading:')}\n`));
+    for (const unbolded of ['  three', 'Capital', 'five', 'Notes:', 'six']) {
+      assert.ok(!new RegExp(`\\x1b\\[1m[^\\x1b]*${unbolded}`).test(forced), unbolded);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the human samples through the real command: plain when piped, bold under FORCE_COLOR, brief/quiet/json identical either way', () => {
+  const dir = sampleDir();
+  try {
+    const forceOn = { ...process.env, FORCE_COLOR: '1', NO_COLOR: undefined };
+    const forceOff = { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined };
+    const args = ['inspect', 'a.txt', 'empty.txt', 'assets', 'gone.txt'];
+    const plain = run(args, { cwd: dir, env: forceOff }).stdout;
+    const loud = run(args, { cwd: dir, env: forceOn }).stdout;
+    assert.doesNotMatch(plain, /\x1b/);
+    assert.notEqual(loud, plain);
+    assert.equal(unbold(loud), plain);
+    assert.match(loud, /\x1b\[1ma\.txt\x1b\[22m\n {4}file, 5 B\n {4}\x1b\[1mkind:\x1b\[22m file\n/);
+    for (const flag of ['--brief', '--quiet', '--json']) {
+      assert.equal(run([...args, flag], { cwd: dir, env: forceOn }).stdout, run([...args, flag], { cwd: dir, env: forceOff }).stdout, flag);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

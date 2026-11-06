@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.5.0 — 2026-11-06
+
+A revision of the `mjs-tool/3` runtime, not a new contract. The marker stays
+`runtime v3`, `CONTRACT` stays `mjs-tool/3`, and `--brief`, `--quiet`, `--json`
+and every exit code are byte for byte what 0.4.1 printed: 192 invocations
+(four environments, twelve commands, four modes, stdout, stderr and exit code)
+against the 0ef6970 runtime, and the scaffolder’s three modes, came out
+identical. The fence changes, so the sha256 moves from `caf3bd4c…` to
+`27679d92…` and every adopted tool’s pinned hash goes stale until it re-syncs
+(`ADOPTING.md` §10, “The 0.5.0 revision”). Runtime revisions carry no number of
+their own in this repo: a revision is the skeleton release and the block’s
+sha256, as 0.4.0 was for `v3`.
+
+Dan’s say-so, 2026-11-06, after he read the `list` output and
+the `--help` of an adopted tool as a wall of text and approved a preview: “in help have
+the command names in bold and then after the text for that section an extra
+line break. list: bold first line …; then put all the labels like ‘key:’ etc in
+bold; some system of emojis after the ‘ok:’ depending on how much time is left;
+then a return before the next key”, then “can the emoji go first … that way …
+the emojis will line up vertically in a long list”, then “go”.
+
+- **A blank line between items in the default human mode** (always, colour or
+  not), and exactly one before `summary:`. This changes invariant 13’s frozen
+  human block on that say-so.
+- **Bold, only where it will be read as bold.** The item name after the glyph,
+  every label (a leading `label:` in the summary, a `lines` entry or the reason
+  line, a second one after three or more spaces, the `summary:` label) and, in
+  `--help`, each heading and each command name. ANSI SGR 1 on and 22 off,
+  written to a terminal when `NO_COLOR` is unset or empty; `FORCE_COLOR` set to
+  a non-empty value other than `0` or `false` forces it on and outranks
+  `NO_COLOR`. Sources read 2026-11-06: no-color.org (“present and not an empty
+  string (regardless of its value)”), force-color.org (the same for
+  `FORCE_COLOR`) and Node’s CLI documentation, which takes `FORCE_COLOR` over
+  `NO_COLOR`, reads `0` as off, and, unlike force-color.org, an empty value as
+  on and an unlisted value as off; this follows force-color.org for those two.
+  A label is one to three lowercase words ending in a colon followed by a space
+  or the line end, so a URL, a time, a Windows path, a capitalised word or a
+  sentence is never bolded. Item text is escaped by `printable()` first and
+  bolded after, so no escape sequence in an item can open, close or fake a bold
+  span. `--brief`, `--quiet` and `--json` never carry bold.
+- **`item.mark`**, an optional short string the tool sets, printed first on the
+  summary line as `    <mark> <summary>` so marks line up down a long list. At
+  most eight characters (code points) are kept; a mark that is not a string, is
+  blank or holds a control character (TAB included) is dropped whole. It is
+  never in `--brief`, `--quiet` or `--json`.
+- **`--help`** bolds each heading (a capitalised phrase ending in a colon, alone
+  on its line) and, in `Commands:`, each command name at the start of an entry
+  (two spaces, the name, two or more spaces), and leaves a blank line after each
+  command’s block. The block ends at the next entry, the next heading or a line
+  back at the left margin. A header shaped otherwise prints as written. The
+  skeleton’s own header puts `Output modes (…)` on one line so that heading is
+  bold too.
+- **Tests: 97 → 107.** The golden human test takes the new layout; new tests
+  cover the blank-line layout, the bold matrix (a terminal, a pipe,
+  `NO_COLOR`, `FORCE_COLOR` in its forms, and both), the label positives and
+  negatives, the injection cases, the mark (shown in human, absent from
+  brief, quiet and json, capped, dropped on a control character), the help
+  bolding and spacing on the skeleton’s header and on a header shaped
+  differently, and the three non-human modes equal with every colour variable
+  set. Both test files now delete `FORCE_COLOR` and `NO_COLOR` before they run
+  anything: on a terminal `node --test` sets `FORCE_COLOR=1` for its files,
+  which would otherwise put bold into every human-mode run.
+- Docs: README (the human layout, the item fields), CLAUDE.md (invariants 12,
+  13, and the new 15), AGENT-USAGE (marks and bold are human-only), ADOPTING §2
+  and §10 (how an adopted tool takes the revision; open item 6).
+
 ## 0.4.1 — 2026-10-30
 
 - **A scaffold carries its own author, not the skeleton’s (D583).** Every tool `new-tool` wrote had `author: Danniel T. Gaidula <dan@iceboxind.com>` in its `package.json` and `MIT © Danniel T. Gaidula` in its README, so a stranger who scaffolded and published a tool would have listed the skeleton’s owner and email. The author now comes from `--author "<Name> <email>"` (both parts required, one line; a bad value is exit 2 naming the flag, before anything is written), else npm’s `init-author-name` and `init-author-email`, else git’s `user.name` and `user.email` (with a `note:` on stderr, since a git identity is often not the name an author publishes under), else the placeholder `TODO: Your Name <you@example.com>` and `MIT © TODO: Your Name`. A source counts when it gives a name. Lookups use `execFile` (no shell), a 5-second timeout and `GIT_TERMINAL_PROMPT=0`, and a failure or timeout means unset; they run only once the target directory is known to be free. The copied `LICENSE` is unchanged, since the MIT licence requires its notice to travel with the code. The scaffolder’s `--help`, `--cheat` card and the README say all this and how to set the npm keys. The scaffolder suite gains nine tests (the four sources, name-only and email-only sources, the `--author` refusals, a refused target that looks nothing up, a failing and a hanging lookup, and a check that the two `requireValue` copies match) and every scaffolder run now uses a temporary home with no real npm or git config in reach. All of it sits outside the fence.

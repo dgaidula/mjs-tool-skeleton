@@ -107,7 +107,13 @@ on it before you touch it.
 - **`--help` reads the header from line 2.** It prints the `//` lines from
   line 2 down to the first line that isn’t one: a shebang on line 1, then the
   comment block with no blank line between. A `/** … */` header, or a blank
-  line after the shebang, gives an empty `--help`.
+  line after the shebang, gives an empty `--help`. Since 0.5.0 it also sets the
+  text out: a heading (a capitalised phrase ending in a colon, alone on its
+  line) is bold on a terminal, and in the `Commands:` section each entry (two
+  spaces, a lowercase name, two or more spaces, the text) has a bold name and a
+  blank line after its block. Keep a heading on one line (`Output modes (all
+  rendered from the same item objects):`, not wrapped) and write command
+  entries in that shape; a header shaped otherwise prints as written.
 
 - **Rename in its own commit.** A `.js` → `.mjs` rename plus a heavy rewrite
   in one commit reads to git as a delete and an add, and blame stops there.
@@ -944,6 +950,61 @@ for a malformed hook (`contract mjs-tool/2: declare …` becomes
    reads as `<verdict> <summary>  <name>`, and a scan of the fleet shows the
    tool on `mjs-tool/3` with its fence unedited.
 
+### The 0.5.0 revision: human layout and `--help`
+
+The second runtime revision, and the first within `mjs-tool/3`: the marker
+stays `runtime v3`, the contract string stays `mjs-tool/3`, and `--brief`,
+`--quiet`, `--json` and every exit code are byte for byte what they were (a
+run of 192 invocations against the 0.4.1 runtime proved it). What changes is
+the default human mode and `--help`: a blank line between items, bold item
+names and labels on a terminal, an optional per-item `mark`, and spaced,
+bold-headed help. A revision has no number of its own; it is the skeleton
+release and the block’s sha256, `27679d92…` for 0.5.0 (the 0.4.x block was
+`caf3bd4c…`). The fence test’s “edited” reading of an adopted tool is therefore
+expected until it re-syncs.
+
+1. **Replace the fence wholesale**, as step 1 above. The block adds names and
+   drops none: `boldEnabled`, `boldWith`, `LABEL_WORD`, `LABEL`, `boldLabels`,
+   `MARK_MAX`, `markOf`, `HELP_HEADING`, `HELP_COMMAND`. A top-level
+   redeclaration of one fails at load; search the tool’s own code first.
+   `helpText()` now formats what it reads, so a tool that prints its own help
+   some other way is unaffected.
+
+2. **Move the fence test** to the new sha256 and name the release (0.5.0), as
+   step 2 above.
+
+3. **Update the tests that pin human output.** Each item block is followed by a
+   blank line (the last item’s is the one before `summary:`, as before), so a
+   golden human run gains one empty line between items; a test that pins
+   `--help` text sees the blank lines after each command block.
+
+4. **Clear `FORCE_COLOR` and `NO_COLOR` in every test file that runs the tool
+   in human mode or with `--help`.** On a terminal `node --test` sets
+   `FORCE_COLOR=1` for the files it runs, so a child that inherits it prints
+   bold and a human golden test passes in a pipe and fails at the prompt. Put
+   `delete process.env.FORCE_COLOR; delete process.env.NO_COLOR;` beside the
+   other imports, as the skeleton’s tests do, and set them only in the test that
+   is about colour. A script that captures a tool’s human output and has
+   `FORCE_COLOR` in its environment gets escape bytes too; `--brief` and
+   `--json` never do.
+
+5. **Update the tool’s own docs.** Paste the current `AGENT-USAGE.md` block over
+   the old one, and copy the skeleton header’s human-mode line if the tool’s
+   `--help` repeats the output modes.
+
+6. **Marks are optional.** A tool that wants one sets `item.mark` where it builds
+   the item (not in `verdict()`, which stays the source of verdicts): one short
+   string, an emoji say, that shows state at a glance, such as a dot that runs
+   from green to red as an expiry nears. It prints first on the summary line,
+   so keep one tool’s marks the same width; items without one print as before.
+   Never put in a mark what `data` or the summary does not also carry, since
+   `--brief`, `--quiet` and `--json` print no mark. Test it as a mark per
+   state in human, and the same `--brief` and `--json` bytes with and without.
+
+7. **Done** when the tool’s suite is green at a terminal as well as in a pipe
+   (`script -q /dev/null npm test` on macOS), its human run reads with a blank
+   line between items, and a scan shows its fence unedited against 0.5.0.
+
 ## Open items for the skeleton
 
 1. **A declared name and version.** A hook so a tool shipped as `lint.mjs`,
@@ -997,4 +1058,5 @@ for a malformed hook (`contract mjs-tool/2: declare …` becomes
    new contract: `contract` stays as it was. The converse is the rule that made
    0.4.0 `mjs-tool/3`: a revision that changes the `--brief` lines is a new
    contract (§10). Item 2 lived in the scanner, not the fence, and landed on
-   its own.
+   its own. 0.5.0, a runtime revision for the human layout, did not take items 1
+   or 4 along: it was asked to change the layout and `--help` only.

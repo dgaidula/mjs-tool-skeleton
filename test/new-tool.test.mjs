@@ -9,6 +9,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Whether output is bold is the test's choice, never the parent's: on a terminal
+// `node --test` sets FORCE_COLOR=1 for the files it runs, and a child that
+// inherited it would print bold into every human-mode run below.
+delete process.env.FORCE_COLOR;
+delete process.env.NO_COLOR;
+
 // fileURLToPath, not .pathname, which keeps %20 for a space in the checkout path.
 const NEW_TOOL = fileURLToPath(new URL('../bin/new-tool.mjs', import.meta.url));
 const SKELETON = fileURLToPath(new URL('../skeleton/tool.mjs', import.meta.url));
@@ -621,7 +627,7 @@ test('the runtime fence is byte-identical in the skeleton and the scaffolder', (
 });
 
 // Adopted tools pin this hash (the block, both marker lines included, no trailing newline).
-const FENCE_SHA256 = 'caf3bd4cb6f99432ea87c80884c86ec6fec7023ad6ef06423aeda27f837b22df';
+const FENCE_SHA256 = '27679d92f2ce237031c20279286eaeffe9141668b7ea9ee0ecfcdb9aba612405';
 
 test('the runtime fence hashes to the pinned sha256 in both files', () => {
   for (const file of [NEW_TOOL, SKELETON]) {
@@ -630,11 +636,12 @@ test('the runtime fence hashes to the pinned sha256 in both files', () => {
   }
 });
 
-test('human lines are byte-identical to 0.1.0; brief lines follow the v3 rule; summary lines are byte-identical in both (README sample)', () => {
-  // Golden output captured from 0.1.0 (git show 69851df:skeleton/tool.mjs, run
-  // in a temp dir over these files). v2 added the final next: line. v3 changed
-  // only the brief item lines (no padding, no glyph); the summary line and the
-  // whole human block are still 0.1.0's.
+test('human lines follow the 2026-11-06 layout; brief lines follow the v3 rule; summary lines are byte-identical in both (README sample)', () => {
+  // Golden output first captured from 0.1.0 (git show 69851df:skeleton/tool.mjs,
+  // run in a temp dir over these files). v2 added the final next: line. v3
+  // changed only the brief item lines (no padding, no glyph). The human block
+  // is 0.1.0's with one blank line between items (Dan, 2026-11-06); bold and
+  // marks are off here, since this output is piped.
   const golden = {
     brief: [
       'ok would touch mtime  report.txt',
@@ -644,9 +651,9 @@ test('human lines are byte-identical to 0.1.0; brief lines follow the v3 rule; s
       'summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)',
     ],
     human: [
-      '✓ report.txt', '    would touch mtime',
-      '✓ notes.txt', '    would touch mtime',
-      '• assets', '    is a directory', '    skip: apply targets files, not directories',
+      '✓ report.txt', '    would touch mtime', '',
+      '✓ notes.txt', '    would touch mtime', '',
+      '• assets', '    is a directory', '    skip: apply targets files, not directories', '',
       '⊘ gone.txt', '    no such path', '    refuse: path does not exist',
       '',
       'summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)',

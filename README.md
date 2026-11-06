@@ -49,7 +49,7 @@ value” below). Replace it with your own flags, or remove it.
 
 | mode | shape |
 |---|---|
-| (default) | human — a rich, multi-line block per item |
+| (default) | human — a rich, multi-line block per item, a blank line between items, bold labels on a terminal |
 | `--brief` | exactly one line per item, then a summary line |
 | `--json` | a stable object on stdout, nothing else |
 | `--quiet` | the summary line only |
@@ -125,9 +125,10 @@ summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
 next: ask  (dry run: review the 1 finding before --go)
 ```
 
-The summary line, the `next:` line and the whole human block are frozen: the
-summary and human lines are byte for byte what 0.1.0 printed (v2 added the
-final `next:` line). The `--brief` item lines changed once, in `mjs-tool/3`
+The summary line, the `next:` line and the text of each human block are
+frozen: the summary line and each block’s lines are byte for byte what 0.1.0
+printed (v2 added the final `next:` line, and 0.5.0 the layout described
+below). The `--brief` item lines changed once, in `mjs-tool/3`
 (skeleton 0.4.0): they used to be padded into columns, with a glyph, for a
 person to scan, and that made `--brief` longer than the human output on 10 of 30
 audited runs. A brief line is not a column format: the name is the last field
@@ -139,6 +140,61 @@ reads in its true order, and nothing in it can pose as a `next:` line. A TAB
 passes through. `--json` carries the exact value. Item text is data and
 styling belongs to the renderer, so a tool puts no ANSI colour in its item
 strings: it would print as `\x1b[…`, and it costs an agent tokens.
+
+**The human layout** (skeleton 0.5.0, a revision of the `mjs-tool/3` runtime:
+the contract, the `--brief` lines, the `--json` keys and the exit codes are
+untouched). The default human mode is for a person, so it is set out to be
+read, and `--brief`, `--quiet` and `--json` carry none of it:
+
+`apply report.txt notes.txt assets gone.txt` (a dry run, then its `next:` line):
+
+```
+✓ report.txt
+    would touch mtime
+
+✓ notes.txt
+    would touch mtime
+
+• assets
+    is a directory
+    skip: apply targets files, not directories
+
+⊘ gone.txt
+    no such path
+    refuse: path does not exist
+
+summary: ok=2 warn=0 skip=1 refuse=1 fail=0  (dry run: pass --go to apply)
+```
+
+- A blank line sits between items, and one before the `summary:` line.
+- On a terminal the item name and every label are **bold** (ANSI SGR 1, undone
+  with 22): the `warn:` / `refuse:` / `note:` of a reason, the `summary:`
+  label, and a leading `label:` in a summary or a `lines` entry, or a second
+  one after three or more spaces (`file mode: 600   directory mode: 700`). A
+  label is one to three lowercase words and a colon followed by a space or the
+  line end, so a URL, a time or a sentence with a colon in it is not bolded.
+  Output that is piped or redirected has no escape byte. `NO_COLOR` set to a
+  non-empty value ([no-color.org](https://no-color.org)) turns bold off;
+  `FORCE_COLOR` set to a non-empty value other than `0` or `false`
+  ([force-color.org](https://force-color.org), and Node’s own reading of it)
+  turns it on even when piped, and wins over `NO_COLOR`. Item text is escaped
+  before it is made bold, so a name holding an escape sequence can neither
+  start nor end a bold span.
+- An item may carry a `mark`: a short string, one emoji say, that the tool
+  sets to show state at a glance. It prints first on the summary line,
+  `    🟢 ok: 120d left`, so the marks line up down a long list. It is the
+  human mode’s alone: never in `--brief`, `--quiet` or `--json`, which is
+  why the facts it stands for belong in `data`. At most eight characters are
+  kept, and a mark that is not a string, is blank or holds a control character
+  is dropped. Items without one print as they do without the feature.
+- `--help` bolds each heading (`Usage:`, `Commands:` …) and, in the
+  `Commands:` section, each command name at the start of an entry (two spaces,
+  the name, two or more spaces), and leaves a blank line after each command’s
+  block. A header shaped otherwise prints as written.
+
+The item fields the renderer reads are `path`, `name`, `verdict`, `summary`,
+`reason`, `changed` and `data` (all in `--json`), and two for the human mode
+only: `lines`, extra lines under the summary, and `mark`.
 
 The **`--json` schema** is stable. `apply report.txt protected-cfg.txt --json`
 (a dry run with a protected target):
@@ -463,6 +519,16 @@ scaffolded tool. It locks the contract:
   a missing or misshapen hook fails by name as the module loads; `why` is
   escaped and clipped.
 
+- the human layout: a blank line between items and one before the summary;
+  bold on a terminal and under `FORCE_COLOR`, none when piped, under
+  `NO_COLOR`, or for `FORCE_COLOR=0`; labels bolded where they are labels and
+  not in a URL, a time, a path or a sentence; an item with an escape sequence in
+  any field can neither open nor close a bold span; a `mark` printed first in
+  human and nowhere else, capped, dropped when it holds a control character;
+  `--brief`, `--quiet` and `--json` the same bytes with every colour variable
+  set; `--help` headings and command names bold and a blank line after each
+  command’s block, with a differently shaped header printed as written.
+
 - the pre-freeze changes: a text-mode `run` line pasted into a fresh
   `/bin/sh` from another directory applies, in every text mode; an `ask`
   `argv` that names another program is refused; a `run` goes to `--go`
@@ -488,8 +554,8 @@ scaffolded tool. It locks the contract:
 `test/new-tool.test.mjs` covers the scaffolder (the author sources run against
 a temporary home, with no real npm or git config in reach), and three repo-level checks:
 the runtime fence is byte-identical in `skeleton/tool.mjs` and
-`bin/new-tool.mjs`; the human lines and the summary lines
-are byte-identical to 0.1.0, and the brief item lines follow the v3 rule, for
+`bin/new-tool.mjs`; the human layout and the summary lines
+are what is documented here, and the brief item lines follow the v3 rule, for
 the sample above; and a freshly scaffolded tool
 passes its own shipped suite with the same fence.
 

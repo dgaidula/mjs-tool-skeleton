@@ -786,6 +786,51 @@ function printable(text) {
   return String(text).replace(new RegExp(CONTROL_CHARS, 'g'), escapeControl);
 }
 
+// -- bold: the default human mode and --help only
+
+// Bold is SGR 1 on, 22 off, written only where it will be read as bold: to a
+// terminal, with no NO_COLOR, so a pipe or a file never gets an escape byte.
+// NO_COLOR (https://no-color.org): present and not empty, no colour.
+// FORCE_COLOR (https://force-color.org): present and not empty, colour even
+// when piped, and it outranks NO_COLOR, as Node reads it (nodejs.org/api/cli.html,
+// "Environment variables"). Node also takes '0' as off and any value but
+// 1, 2, 3, true or empty as off; this takes '0' and 'false' as off and every
+// other non-empty value as on, as force-color.org does, and an empty one as unset.
+function boldEnabled(env = process.env, isTTY = process.stdout.isTTY) {
+  const force = env.FORCE_COLOR;
+  if (force) return force !== '0' && force !== 'false';
+  return !env.NO_COLOR && !!isTTY;
+}
+
+function boldWith(on) {
+  return (text) => (on ? `\x1b[1m${text}\x1b[22m` : text);
+}
+
+// A label: one to three lowercase words (letters, digits after the first, dots
+// and hyphens) and a colon that ends the line or is followed by a space. It
+// opens the text, or follows three or more spaces (`file mode: 600   directory
+// mode: 700`), so a URL (`https://`), a time (`12:30`), a Windows path (`C:\`) or
+// a sentence with a colon in it is never bolded. Run it on text already
+// escaped by printable(): the escaped text holds no ESC, so nothing in an item
+// can open or close the bold.
+const LABEL_WORD = '[a-z][a-z0-9.-]*';
+const LABEL = new RegExp(`(?:^|(?<= {3}))(${LABEL_WORD}(?: ${LABEL_WORD}){0,2}):(?= |$)`, 'g');
+
+function boldLabels(text, bold) {
+  return text.replace(LABEL, (_, label) => bold(`${label}:`));
+}
+
+// An item's optional `mark`: a short decoration (one emoji) the tool sets and
+// only the human renderer prints, first on the summary line. At most MARK_MAX
+// characters (code points); dropped whole when it is not a string, is blank,
+// or holds a control character (TAB included), so it never reaches a line.
+const MARK_MAX = 8;
+function markOf(item) {
+  const mark = typeof item.mark === 'string' ? item.mark.trim() : '';
+  if (!mark || CONTROL_CHARS.test(mark) || mark.includes('\t')) return '';
+  return printable(Array.from(mark).slice(0, MARK_MAX).join(''));
+}
+
 // POSIX single-quoting, only where a token needs it; a token holding a control
 // character is ANSI-C quoted ($'...') instead, so the line stays one line.
 function shellQuote(token) {
@@ -891,17 +936,21 @@ function report({ command, effect, items, next, state = null, mode, argv = proce
   }
 
   const lines = [];
+  const bold = boldWith(mode === 'human' && boldEnabled());
   if (mode === 'brief') {
     for (const it of items) lines.push(briefLine(it));
   } else if (mode === 'human') {
-    for (const it of items) {
-      lines.push(`${glyph(it.verdict)} ${printable(it.name)}`, `    ${printable(it.summary)}`);
-      for (const line of it.lines || []) lines.push(`    ${printable(line)}`);
-      if (it.reason) lines.push(`    ${it.verdict === 'ok' ? 'note' : it.verdict}: ${printable(it.reason)}`);
-    }
+    items.forEach((it, i) => {
+      if (i) lines.push('');
+      const mark = markOf(it);
+      lines.push(`${glyph(it.verdict)} ${bold(printable(it.name))}`,
+        `    ${mark ? `${mark} ` : ''}${boldLabels(printable(it.summary), bold)}`);
+      for (const line of it.lines || []) lines.push(`    ${boldLabels(printable(line), bold)}`);
+      if (it.reason) lines.push(`    ${boldLabels(`${it.verdict === 'ok' ? 'note' : it.verdict}: ${printable(it.reason)}`, bold)}`);
+    });
     lines.push('');
   }
-  lines.push(summaryLine(summary, effect));
+  lines.push(mode === 'human' ? boldLabels(summaryLine(summary, effect), bold) : summaryLine(summary, effect));
   if (next) lines.push(nextLine(next, mode));
   return emit(`${lines.join('\n')}\n`);
 }
@@ -932,12 +981,46 @@ function environmentError(message) {
 
 // Read the leading comment block of THIS file as help text (contact-sheet-cli
 // pattern): skip the shebang, take the contiguous `//` lines, strip the `// `.
+// The text is then set out for reading. A heading is a line that is a
+// capitalised phrase ending in a colon (`Usage:`, `Output modes (all rendered
+// from one list):`) and is bold. In the `Commands:` section an entry is two
+// spaces, the command name, two or more spaces and its text; the name is bold,
+// and a blank line follows each entry's block (the lines up to the next entry or
+// the end of the section, which is the next heading or a line back at the left
+// margin). The blank lines are always added, the bold only where boldEnabled()
+// allows it. A header shaped otherwise prints as written.
+const HELP_HEADING = /^[A-Z][A-Za-z ]*(?: \([^()]*\))?:$/;
+const HELP_COMMAND = /^ {2}([a-z][a-z0-9._:-]*(?: [a-z][a-z0-9._:-]*){0,2})( {2,}\S.*)$/;
+
 function helpText() {
   const lines = runtimeFs.readFileSync(SCRIPT_PATH, 'utf8').split('\n');
-  const out = [];
+  const raw = [];
   for (const l of lines.slice(1)) {
     if (!l.startsWith('//')) break;
-    out.push(l.slice(3));
+    raw.push(l.slice(3));
+  }
+  const bold = boldWith(boldEnabled());
+  const out = [];
+  let inCommands = false;
+  let afterHeading = false;
+  for (const l of raw) {
+    const heading = HELP_HEADING.test(l);
+    if (inCommands && (heading || (l !== '' && !l.startsWith(' '))) && out.at(-1) !== '') out.push('');
+    if (heading) {
+      inCommands = l === 'Commands:';
+      afterHeading = true;
+      out.push(bold(l));
+      continue;
+    }
+    if (l !== '' && !l.startsWith(' ')) inCommands = false;
+    const entry = inCommands ? HELP_COMMAND.exec(l) : null;
+    if (entry) {
+      if (!afterHeading && out.at(-1) !== '') out.push('');
+      out.push(`  ${bold(entry[1])}${entry[2]}`);
+    } else {
+      out.push(l);
+    }
+    afterHeading = false;
   }
   return out.join('\n');
 }
