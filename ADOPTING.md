@@ -1025,9 +1025,10 @@ until it re-syncs.
 
 5. **Update the tool’s own docs.** A tool whose `AGENT-USAGE` block is the
    skeleton’s own gets the current `AGENT-USAGE.md` block pasted over the old
-   one. A tool that has tailored its block keeps it: append only the lines the
-   current skeleton block adds, since pasting over it would erase what the tool
-   says about itself. Paste the skeleton’s `--cheat` bullet only where
+   one. A tool that has tailored its block keeps it: append only what the
+   current skeleton block adds (for 0.5.0, the two sentences at the end of its
+   first bullet), since pasting over it would erase what the tool says about
+   itself. Paste the skeleton’s `--cheat` bullet only where
    `<tool> --cheat` exits 0, or the block sends an agent to a flag that fails.
    Copy the skeleton header’s human-mode line if the tool’s `--help` repeats the
    output modes, but only when the tool’s line is the skeleton’s old one; leave
