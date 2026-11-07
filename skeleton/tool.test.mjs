@@ -2056,6 +2056,7 @@ test('--help: a second left-column key is bold with the first (`(default)   huma
       '  2   usage.  More.', // punctuation: no key
       '  3   x   y   Two keys at most.', // the third is not bold
       '  4   alone', // nothing after it: the description, not a key
+      '  alpha beta   text', // one space before the second word: no entry, so nothing is bold
       '  --brief   human   A flag takes no second key.',
       '  -y, --yes   human   Nor does a comma list.',
       '',
@@ -2069,11 +2070,13 @@ test('--help: a second left-column key is bold with the first (`(default)   huma
       '  (default)   human    The human mode.', '',
       '  (default)   human-2  A digit and a hyphen in the second key.', '',
       '  0   all ok.', '', '  1   Partial  run.', '', '  2   usage.  More.', '', '  3   x   y   Two keys at most.', '', '  4   alone', '',
+      '  alpha beta   text', '',
       '  --brief   human   A flag takes no second key.', '', '  -y, --yes   human   Nor does a comma list.', '', '',
       'Commands:', '', '  list   all   The command rule is its own.', '',
     ].join('\n')); // a second key changes no blank line: each of these lines is an entry either way
     const forced = helpWith(dir, 'keys', header, { FORCE_COLOR: '1' });
     assert.equal(unbold(forced), plain);
+    assert.ok(forced.includes('\n  alpha beta   text\n')); // two or more spaces on the left too
     const spans = [...forced.matchAll(/\x1b\[1m([^\x1b]*)\x1b\[22m/g)].map((m) => m[1]);
     assert.deepEqual(spans, [
       'keys', 'Output modes:', '(default)   human', '(default)   human-2', '0', '1', '2', '3   x', '4',
