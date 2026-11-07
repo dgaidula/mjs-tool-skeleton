@@ -1,0 +1,75 @@
+{
+  "tool": "mjs-tool-skeleton",
+  "run": "closure re-check (scoped, release mode): c75bfe9 on main against gates/2026-11-06-0.5.0-final-recheck.json FU1 (mutant M8 survives)",
+  "date": "2026-11-07",
+  "verdict": "CLOSED WITH FOLLOW-UPS",
+  "scope": "071d1e8..c75bfe9 is one commit, 3 insertions in skeleton/tool.test.mjs (one header row, one expected-output row, one assert.ok) inside the existing “a second left-column key is bold” test. Test-only: skeleton/tool.mjs and bin/new-tool.mjs are untouched. Nothing outside the brief; the diff holds no local path or private tool name.",
+  "suite": {
+    "command": "npm test (node --test), FORCE_COLOR and NO_COLOR unset, Node v26.13.0",
+    "pass": 119,
+    "fail": 0,
+    "runs": "piped 119/119; on a pty (script -q) 119/119; TERM=dumb 119/119. The scaffolder test that runs a fresh scaffold’s shipped suite (which copies skeleton/tool.test.mjs, so carries the new row) is green inside those runs."
+  },
+  "fence": {
+    "status": "unchanged",
+    "evidence": "Extracted independently of the fence test (opening marker through closing marker): skeleton/tool.mjs and bin/new-tool.mjs both hash to 6e8cd8a1186090d9d92ab8ee12faccea9eb938b8c7620b6f346710e5a06765c2 bare and 37931f3a1fee824688b683172c238a15af81cbc4575a97fa4574684a2492e81c with the trailing newline; the 071d1e8 skeleton/tool.mjs gives the same. Invariant 12 holds."
+  },
+  "closure": {
+    "final-recheck/FU1": {
+      "status": "closed",
+      "evidence": "M8 applied to RUNTIME_HELP_ENTRY in an isolated copy turns the second-key test red: the row prints `alpha beta` between ESC [1m and ESC [22m, so the new assert.ok fails and, with it removed, the spans deepEqual fails with an extra 'alpha beta'. With FU1 reverted the same mutant survives (control M2), so the new row is what kills it. Each of the two new assertions kills M8 on its own (M3, M4)."
+    },
+    "invariant15": {
+      "status": "agrees",
+      "evidence": "CLAUDE.md invariant 15: an entry is “two spaces, a first token, two or more spaces and its text”, a second key counts “when two or more spaces set that word off on both sides”, and “a line of two spaces that is not an entry … is a block of its own with a blank line before it”. `  alpha beta   text` has one space after `alpha`, so it is no entry and nothing on it is bold; the expected plain output puts one blank line before it and the next entry’s blank after it. RUNTIME_HELP_ENTRY at c75bfe9 does exactly that (helpText(): not an entry, `^ {2}\\S` matches, block becomes prose)."
+    }
+  },
+  "authorClaims": {
+    "tests": "119/119: reproduced (piped, pty, TERM=dumb).",
+    "fenceHash": "6e8cd8a1… unchanged in both files: reproduced.",
+    "killsM8": "reproduced (M1, M3, M4, M5)."
+  },
+  "mutants": {
+    "tool": "gate-kit 0.1.0 mutants --jobs 3 --json -- npm test; M1–M4 and M6 run the second-key test alone (node --test --test-name-pattern=\"a second left-column key is bold\" skeleton/tool.test.mjs, which matches exactly one test: “tests 1”), since any fence edit is also killed by the fence-hash test and would prove nothing about the row",
+    "spec": [
+      "M1: M8 in skeleton/tool.mjs (find `(?: {2,}[a-z][a-z0-9-]*)?`, replace `(?: +[a-z][a-z0-9-]*)?`)",
+      "M2 (control): M8 with the three FU1 lines removed; expected to survive",
+      "M3: M8 with only the new assert.ok removed",
+      "M4: M8 with only the spans deepEqual neutralised",
+      "M5: M8 in both fence copies, full npm test",
+      "M6 (control): FU1 lines removed, runtime unmutated; expected to survive (the test is green without the row)"
+    ],
+    "result": "M1, M3, M4, M5 killed; M2 and M6 survived, as designed for controls; no invalid or failed mutant",
+    "quote": [
+      "ok baseline: node --test \"--test-name-pattern=a second left-column key is … green in 304ms",
+      "ok baseline: /bin/sh -c \"npm test\" green in 56.5s",
+      "ok M1 killed, exit 1, 277ms, 1 red",
+      "warn M2 survived, exit 0, 281ms",
+      "ok M3 killed, exit 1, 289ms, 1 red",
+      "ok M4 killed, exit 1, 255ms, 1 red",
+      "ok M5 killed, exit 1, 33.4s, 4 red",
+      "warn M6 survived, exit 0, 222ms",
+      "ok real tree 17 files + git unchanged (start equals end: path, size, mtime and mode of every copied entry, git status, refs and HEAD, and the sha256 of 3 touched files; 3 isolated copies)",
+      "summary: ok=7 warn=2 skip=0 refuse=0 fail=0 (both warns are the controls M2 and M6)"
+    ]
+  },
+  "regressions": "None found.",
+  "findings": [],
+  "notBlocking": [
+    {
+      "id": "FU1",
+      "summary": "The trailing comment on the expected plain output still says every row is an entry, which the new row is not.",
+      "location": "skeleton/tool.test.mjs:2076",
+      "repro": "Line 2076 reads `].join('\\n')); // a second key changes no blank line: each of these lines is an entry either way`, while line 2059 says of `  alpha beta   text` “no entry, so nothing is bold” and helpText() treats it as prose (block = 'prose').",
+      "acceptance": "The comment names the exception, e.g. “each of these lines but `alpha beta` is an entry either way; that one is prose, and its blank lines fall the same”. Comment-only: no hash moves.",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "unlikely",
+      "confidence": "high",
+      "cause": "The row was added to a list whose summary comment predates it.",
+      "needsDesign": false
+    }
+  ],
+  "tree": "git status --porcelain --ignored (empty) and a sha256 of every tracked file recorded before the first run and after the last: start equals end at c75bfe9, before this receipt was written. Every spec, probe and log lived in the gate’s own scratch folder.",
+  "sources": "Read directly: the c75bfe9 diff, the whole second-key test, RUNTIME_HELP_ENTRY and helpText() at c75bfe9, CLAUDE.md invariants 12 and 15, ADOPTING.md §10’s two hash forms, every output quoted here. The final re-check receipt was read only for FU1’s acceptance line and this file’s shape, after the findings above were written."
+}
