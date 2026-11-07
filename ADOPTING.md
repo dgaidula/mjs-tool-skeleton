@@ -1023,9 +1023,15 @@ until it re-syncs.
    `FORCE_COLOR` in its environment gets escape bytes too; `--brief` and
    `--json` never do.
 
-5. **Update the tool’s own docs.** Paste the current `AGENT-USAGE.md` block over
-   the old one, and copy the skeleton header’s human-mode line if the tool’s
-   `--help` repeats the output modes. Then read the tool’s `--help` at a
+5. **Update the tool’s own docs.** A tool whose `AGENT-USAGE` block is the
+   skeleton’s own gets the current `AGENT-USAGE.md` block pasted over the old
+   one. A tool that has tailored its block keeps it: append only the lines the
+   current skeleton block adds, since pasting over it would erase what the tool
+   says about itself. Paste the skeleton’s `--cheat` bullet only where
+   `<tool> --cheat` exits 0, or the block sends an agent to a flag that fails.
+   Copy the skeleton header’s human-mode line if the tool’s `--help` repeats the
+   output modes, but only when the tool’s line is the skeleton’s old one; leave
+   a tool’s own human-mode wording alone. Then read the tool’s `--help` at a
    terminal (or under `FORCE_COLOR=1`) with the header as §2 describes it:
    - Keep each heading on one line. A heading wrapped over two lines (`Output
      modes (all rendered from the same item objects, so they can never` /
