@@ -2073,7 +2073,7 @@ test('--help: a second left-column key is bold with the first (`(default)   huma
       '  alpha beta   text', '',
       '  --brief   human   A flag takes no second key.', '', '  -y, --yes   human   Nor does a comma list.', '', '',
       'Commands:', '', '  list   all   The command rule is its own.', '',
-    ].join('\n')); // a second key changes no blank line: each of these lines is an entry either way
+    ].join('\n')); // a second key changes no blank line: each of these lines is an entry either way, except `alpha beta`, which is prose (one space)
     const forced = helpWith(dir, 'keys', header, { FORCE_COLOR: '1' });
     assert.equal(unbold(forced), plain);
     assert.ok(forced.includes('\n  alpha beta   text\n')); // two or more spaces on the left too
