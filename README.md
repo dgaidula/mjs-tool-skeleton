@@ -369,7 +369,7 @@ what it would do and changes nothing. `--go` performs it. A read-only command
 
 | code | meaning |
 |---|---|
-| `0` | all items ok (skips are not failures) |
+| `0` | all items ok (skips are not failures; but a read-only checker whose run checked nothing adds a `nothing-checked` `warn` and exits `1`, and a dependency it cannot start is exit `3`, never a `skip`: ADOPTING.md §3) |
 | `1` | partial — at least one item warned, refused, or failed |
 | `2` | usage error (unknown flag/command, missing argument, bad mode combo) |
 | `3` | could not run to completion — an environment error (a required binary or config is missing/unreadable) or an internal error (an uncaught exception or unhandled rejection, from `main()`, a timer, or a stream, including a `next` that breaks rule 2 or 4, and a contract hook the tool did not declare). An error thrown after the report is written is still printed, but the run keeps the report’s code, which nothing may contradict. An error while the module loads — a syntax error, or a top-level use of a fence name above the fence — happens before the fence can catch it, and Node exits `1` |

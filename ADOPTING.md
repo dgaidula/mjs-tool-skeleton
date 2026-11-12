@@ -324,6 +324,21 @@ by how worried a reader should be.
   surfaced a prior review’s verdict “for information” made every run exit 1
   once that line became a `warn`, and an agent could never reach clean.
 
+- **A checker whose run looked at nothing is not a pass.** A read-only
+  checker exists for its coverage, so when its run checked nothing (the folder
+  held no page, a filter removed every input, no input was readable), the
+  list is all `skip` and the run exits 0, which reads as clean. Add one
+  tool-level `warn` item (`nothing-checked`, `path: null`) so the run exits 1.
+  A dependency the run cannot start (a browser engine, a required binary or
+  config) is `environmentError()`, exit 3 with nothing on stdout, never a
+  `skip`: the exit code the README already gives a missing dependency. This
+  rule is for checkers, runs whose job is coverage. A tool that converges (a
+  re-run where every target is already right, a `--go` with nothing left to
+  do) ends in an all-`skip` list that means “nothing left to do”, and the
+  fence leaves that at exit 0 on purpose: exit 1 on every converged re-run
+  would be the same harm as the advisory above. Only the tool knows which
+  meaning its `skip` carries, so the rule lives in the tool, above the fence.
+
 - **Items that span files** carry `path: null`.
 
 - **One finding can carry a different verdict per command.** A lint finding
