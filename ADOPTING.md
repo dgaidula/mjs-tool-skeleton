@@ -1128,3 +1128,29 @@ until it re-syncs.
    contract (§10). Item 2 lived in the scanner, not the fence, and landed on
    its own. 0.5.0, a runtime revision for the human layout, did not take items 1
    or 4 along: it was asked to change the layout and `--help` only.
+
+7. **Two savings for agents that need the fence.** Agent measurements (30 days
+   of one maintainer’s transcripts, 2026-11-11) put about half of the
+   characters agents read from tools into finding out how to call them (help,
+   cheat cards, tool guides), against operating output in `--brief`,
+   `--json` and `--quiet`, which agents already use correctly. Two ideas
+   would reach every adopted tool, so both change the fence and wait with
+   items 1 and 4 for the next revision, per item 6; neither forces one.
+   - **Per-command help for every tool.** Generalize a per-command slice
+     into the shared `helpText`: `<tool> <command> --help` prints that
+     command’s `Usage:` line, its `Commands:` entry, its “Options for
+     <command>:” section and its verdicts, cut from the header text the tool
+     already has, so nothing is written twice and a bare `--help` is
+     unchanged. It keys on the header convention one adopted tool already
+     uses. Measured there: a tool whose `<command> --help` prints the same
+     11,248-byte screen as `--help` sends an agent that needs one command
+     through two or three reads (cheat card, then the whole help); the
+     aim is a per-command help of about 3 kilobytes. Caveat: it works only for
+     a header that follows the convention (a `Usage:` line per command, a
+     `Commands:` entry, “Options for <command>:”).
+   - **Compact `--json`.** Print `--json` without indentation, which
+     saves 28–37 % of its bytes on the three tools measured.
+     Agent output is never a terminal, so this means compact for every agent
+     call. Caveats: a `--json | head` read (6 of 167 piped `--json` calls
+     in a sample week) would get one long line, and any test that pins
+     pretty-printed JSON bytes goes red.
