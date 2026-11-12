@@ -22,6 +22,8 @@ the command name). `new-tool` already drops it into every scaffolded tool’s
 
 - **Quote back** the final summary line plus every non-`ok` line as `--brief` printed it. That is the whole result — do not paraphrase a refusal into “done”. A reason that ends `… (+N chars; --json for all)` was cut at 160 characters: the cut form is the quote, and `--json` has the full reason when you need it.
 
+- **Claude Code cuts long output.** A command that exits `1` reaches you as about 10,000 characters, head and tail, with the middle dropped and no file to read it from; one that exits `0` shows up to about 30,000, and past that you get a file path and a 2,000-character preview. So send a large `--json` to a file (`<tool> … --json > out.json`) and read it with `jq`.
+
 ### The babysit loop: run, read `next`, obey or halt
 
 Every run ends with one piece of advice: the `next:` line, or the `next` object in `--json`.
@@ -45,4 +47,4 @@ next: ask  (dry run: review the 1 finding before --go)
 
 **Budgets.** At most 6 `run` steps per procedure, unless the runbook sets another number; past it, halt and report. `wait` has no cycle limit: the tool is the stuck detector (it turns a stuck state into `ask`), and the runbook procedure sets how long, in wall-clock time, you may wait.
 
-**The runbook can only hold you back.** A runbook can halt you where `next` says `run`; nothing but a person carries you past `ask` or `stop`. Report any disagreement as a finding. `next` never carries an override flag — any `--yes*`, `--force*`, `--assume-yes`, `--allow`, `--allow-*`, or `--i-am-*` flag, `-y`, or one the tool declares — and it never contradicts the exit code. Advice can only go straight to `--go` on what you just previewed: a `run` that carries `--go` repeats the dry run you just ran, with `--go` added, and a `run` into another command carries no `--go`.
+**The runbook can only hold you back.** A runbook can halt you where `next` says `run`; nothing but a person carries you past `ask` or `stop`. Report any disagreement as a finding. `next` never carries an override flag — any `--yes*`, `--force*`, `--assume-yes`, `--allow`, `--allow-*`, or `--i-am-*` flag, `-y`, or one the tool declares — and it never contradicts the exit code. Advice can only go straight to `--go` on what you just previewed: a `run` that carries `--go` repeats the dry run you just ran, with `--go` added, and a `run` into another command carries no `--go`. This halt rule is for a tool’s real target: a gate, fixer or test arm that runs `--go` on its own scratch copy, fixture or stand-in is outside it.
