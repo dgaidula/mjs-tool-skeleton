@@ -112,12 +112,14 @@ const CHEAT = `# new-tool
 const PLACEHOLDER_NAME = 'TODO: Your Name';
 const PLACEHOLDER_AUTHOR = { name: PLACEHOLDER_NAME, email: 'you@example.com', line: `${PLACEHOLDER_NAME} <you@example.com>`, source: 'placeholder' };
 
-// What `npm test` runs in a scaffold: the test folder, by name. A bare
-// `node --test` also runs every file its default patterns match (test.mjs,
-// test-*.mjs, *-test.mjs), and for a tool named that way (smoke-test,
-// test-data) that is the tool itself, which exits 2 for want of a command and
-// fails the suite. The generated README shows the same line.
-const TEST_SCRIPT = 'node --test "test/*.test.mjs"';
+// What `npm test` runs in a scaffold: the test folder, by name, at any depth
+// and with either extension, so a test under test/sub/ or named *.test.js is
+// still run, and still fails the suite. A bare `node --test` also runs every
+// file its default patterns match (test.mjs, test-*.mjs, *-test.mjs), and for
+// a tool named that way (smoke-test, test-data) that is the tool itself, which
+// exits 2 for want of a command and fails the suite. The generated README
+// shows the same line.
+const TEST_SCRIPT = 'node --test "test/**/*.test.{mjs,js}"';
 
 function pkgJson(name, author) {
   return `${JSON.stringify({
@@ -189,10 +191,10 @@ dry-run before \`--go\`, and obey or halt on the \`next:\` line.
 npm test      # ${TEST_SCRIPT}
 \`\`\`
 
-The script names the test folder on purpose. A bare \`node --test\` also runs
-every file its default patterns match (\`test.mjs\`, \`test-*.mjs\`,
-\`*-test.mjs\`), so in a tool named that way it would run the tool itself as a
-test, and fail.
+The script names the test folder on purpose (any depth, \`.mjs\` or \`.js\`). A
+bare \`node --test\` also runs every file its default patterns match
+(\`test.mjs\`, \`test-*.mjs\`, \`*-test.mjs\`), so in a tool named that way it
+would run the tool itself as a test, and fail.
 
 Search \`${name}.mjs\` for \`TODO(tool):\` — those mark where this tool’s real
 work goes.

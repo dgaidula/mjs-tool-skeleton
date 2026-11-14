@@ -814,6 +814,28 @@ test('a scaffold’s test script runs its test folder and nothing else, whatever
   }
 });
 
+// Naming the folder must not narrow what runs in it: a failing test in a
+// subfolder of test/, or in a *.test.js file, has to turn `npm test` red.
+test('a scaffold’s test script finds tests in subfolders of test/ and in *.test.js files, and a failing one fails it', () => {
+  const dir = tmp();
+  try {
+    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
+    const root = path.join(dir, 'my-widget');
+    const failing = "import { test } from 'node:test';\ntest('fails', () => { throw new Error('boom'); });\n";
+    for (const rel of ['test/sub/x.test.mjs', 'test/y.test.js']) {
+      const file = path.join(root, rel);
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, failing);
+      const t = runTestScript(root);
+      assert.notEqual(t.status, 0, `${rel}: a failing test there fails npm test\n${t.stdout}${t.stderr}`);
+      assert.match(t.stdout, /^(#|ℹ) fail 1$/m, rel);
+      rmSync(file);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // The title line and the commands of a --cheat card name the tool.
 function assertCardFor(name, card) {
   const lines = card.split('\n');
