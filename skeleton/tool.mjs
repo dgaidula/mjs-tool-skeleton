@@ -160,6 +160,8 @@ function needsConfirmation(path) {
 
 // Stat an item's path. A missing path or a stat error is recorded on the item
 // (verdict included) and returns null, so the caller just returns the item.
+// statSync follows a symlink: a link reports as what it points to, and a
+// dangling one as missing, so "not a regular file" below is never a link.
 function statTarget(item) {
   try {
     return statSync(item.path);
@@ -199,7 +201,7 @@ function inspectOne(path) {
   } else {
     item.kind = 'other';
     item.summary = 'not a regular file';
-    item.reason = 'special file (symlink/device/socket)';
+    item.reason = 'special file (device/socket/FIFO)';
     item.data = { kind: 'other' };
   }
   item.verdict = verdict(item);

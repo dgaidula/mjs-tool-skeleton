@@ -24,6 +24,15 @@
   now runs that script rather than a bare `node --test`. A tool scaffolded
   earlier under such a name takes the same one-line change to its
   `package.json`. The runtime fence is unchanged.
+- **The template’s special-file reason no longer names a symlink.** `inspect`
+  on a device, socket or FIFO said `special file (symlink/device/socket)`, but
+  the placeholder commands stat with `statSync`, which follows links: a symlink
+  reports as what it points to and a dangling one as `no such path`, so that
+  line was never about a link. It now reads `special file
+  (device/socket/FIFO)`. The branch had no test; one new test in
+  `skeleton/tool.test.mjs` (which ships into every scaffold) holds `inspect`
+  warning and `apply --go` skipping on `/dev/null`, and the two link cases.
+  Placeholder code above the fence; the runtime fence is unchanged.
 
 ## 0.5.0 — 2026-11-06
 

@@ -111,6 +111,29 @@ test('apply: a directory is skipped, not collapsed away', () => {
   }
 });
 
+test('a special file (a device): inspect warns, apply skips it even under --go; a symlink is read as what it points to, a dangling one as missing', () => {
+  const dir = tmp();
+  try {
+    const seen = JSON.parse(run(['inspect', '/dev/null', '--json']).stdout);
+    assert.equal(seen.exit, 1); // a warn is a finding
+    assert.deepEqual(seen.items.map((it) => [it.verdict, it.summary, it.reason, it.data]),
+      [['warn', 'not a regular file', 'special file (device/socket/FIFO)', { kind: 'other' }]]);
+    const applied = run(['apply', '/dev/null', '--go', '--brief']);
+    assert.equal(applied.stdout.split('\n')[0], 'skip not a regular file  null  (apply targets regular files)');
+    assert.equal(applied.status, 0); // a skip is not a failure
+    // statSync follows links, so the reason above never has to name one
+    const f = path.join(dir, 'a.txt');
+    writeFileSync(f, 'hello');
+    symlinkSync(f, path.join(dir, 'link'));
+    symlinkSync(path.join(dir, 'gone'), path.join(dir, 'dangling'));
+    const links = run(['inspect', path.join(dir, 'link'), path.join(dir, 'dangling'), '--brief']);
+    assert.deepEqual(links.stdout.split('\n').slice(0, 2),
+      ['ok file, 5 B  link', 'refuse no such path  dangling  (path does not exist)']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('exit codes: 0 ok, 1 partial, 2 usage', () => {
   const dir = tmp();
   try {
