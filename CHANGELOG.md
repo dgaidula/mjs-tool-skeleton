@@ -47,11 +47,10 @@
   `verdict()` with every combination of the placeholder facts and requires one
   of the five each time, and a second test that the placeholder reaches each of
   the five (an adopter whose `verdict()` never gives one trims it, and the
-  comment and `ADOPTING.md` say so); `ADOPTING.md`
-  §3 and §6 tell an adopter to prove the same for its own `verdict()` and to
-  check that the summary counts add up to `items.length`; `AGENT-USAGE.md`
-  tells an agent that a line opening with any other word is a finding; and
-  CLAUDE.md’s invariant 2 names the gap. The runtime fence is unchanged.
+  comment and `ADOPTING.md` say so); `ADOPTING.md` §3 and §6 tell an adopter
+  to prove the same for its own `verdict()` and to check that the summary
+  counts add up to `items.length`; and CLAUDE.md’s invariant 2 names the gap.
+  The runtime fence is unchanged.
 - **A search for `TODO(tool):` is now the whole list.** The README and every
   scaffold’s `CLAUDE.md` say to search the tool for `TODO(tool):` and fill in
   the spots, but three tool-specific parts of the template carried no marker:

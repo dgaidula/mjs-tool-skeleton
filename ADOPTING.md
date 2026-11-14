@@ -1219,5 +1219,4 @@ until it re-syncs.
 
    Until then the check lives above the fence, in each tool’s tests (§3, §6):
    the skeleton’s shipped suite drives `verdict()` with every combination of
-   facts, and the agent block says a line that opens with any other word is a
-   finding.
+   facts.
