@@ -723,11 +723,17 @@ test('a scaffolded tool prints a --cheat card under its own name, and tldr rende
     assert.equal(r.status, 0);
     assert.equal(r.stderr, '');
     assertCardFor('my-widget', r.stdout);
-    // tealdeer is optional: when it is installed, the card must render, placeholders and all
-    const card = path.join(dir, 'my-widget.page.md');
-    writeFileSync(card, r.stdout);
-    const t = spawnSync('tldr', ['--render', card, '--color', 'never'], { encoding: 'utf8', timeout: 20000 });
-    if (!t.error) {
+    // tealdeer is optional: when it is installed, the card must render, placeholders and all.
+    // Like npm and git above, it never sees the real home: a config.toml there
+    // that is unreadable, malformed or restyled would decide this test (tealdeer
+    // exits 1 on one it cannot read). TEALDEER_CONFIG_DIR would point it back.
+    // Another client that answers to `tldr` takes other flags, so it is not asked.
+    const env = Object.fromEntries(Object.entries(BASE_ENV).filter(([k]) => !/^TEALDEER_/i.test(k)));
+    const tldr = (args) => spawnSync('tldr', args, { encoding: 'utf8', timeout: 20000, cwd: BASE_HOME, env });
+    if (/^tealdeer /.test(tldr(['--version']).stdout ?? '')) {
+      const card = path.join(dir, 'my-widget.page.md');
+      writeFileSync(card, r.stdout);
+      const t = tldr(['--render', card, '--color', 'never']);
       assert.equal(t.status, 0, t.stderr);
       assert.match(t.stdout, /my-widget inspect path\/to\/file1 path\/to\/file2 \.\.\./);
     }

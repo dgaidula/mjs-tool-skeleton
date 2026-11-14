@@ -371,6 +371,15 @@ inspect) to prove the copy is runnable, and runs its whole shipped suite
 the env so it runs as a top-level suite). `node --test` from the repo root
 discovers both `skeleton/tool.test.mjs` and `test/new-tool.test.mjs`.
 
+The suite runs three outside programs: npm and git (the author lookups) and,
+when it is installed, tealdeer (`tldr --render` on a scaffold’s cheat card).
+None of them sees the real home: tealdeer runs with the scaffolder tests’
+isolated `HOME` and `XDG_CONFIG_HOME` and no `TEALDEER_*` variable, since it
+exits 1 on a `config.toml` it cannot read and a restyled one would change what
+it prints. The check is skipped unless `tldr --version` says tealdeer; another
+client of that name takes other flags. Give any program a new test spawns the
+same isolated environment.
+
 The contract tests import the tool in-process (the entry guard keeps `main()`
 from running) to drive `assertSafeNext()` and `report()` with injected
 policies. Faults only a changed program can produce (an uncaught throw, an
