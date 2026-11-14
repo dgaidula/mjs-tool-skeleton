@@ -1203,8 +1203,9 @@ until it re-syncs.
    built without it) turns a failure into exit 0 with a summary that
    `AGENT-USAGE.md` tells an agent to read as clean. Invariant 3’s promise
    that a non-`ok` line survives every mode holds for the line and not for
-   the count, the exit code or `next`. A verdict named after an
-   `Object.prototype` key (`toString`, `constructor`) does worse than go
+   the count, the exit code or `next`. A verdict named after an inherited
+   `Object.prototype` method (`toString`, `constructor`, `hasOwnProperty`;
+   not `__proto__`) does worse than go
    uncounted: `'toString' in s` is true, so `summarize()` adds that key to the
    `--json` summary, with a string such as
    `"toString":"function toString() { [native code] }1"` for its value.

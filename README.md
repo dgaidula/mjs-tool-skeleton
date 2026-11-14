@@ -828,24 +828,28 @@ where `next` says `run`; only a person carries it past `ask` or `stop`.
   over for the placeholder. Pass `--author`.
 - **A scaffold’s `npm test` does not run `.ts` tests.** Its script names
   `.mjs`, `.js` and `.cjs`, so a failing `test/z.test.ts` leaves `npm test` at
-  exit 0, though a bare `node --test` on Node 26 runs it. Write tests in one of
+  exit 0, though a bare `node --test` (Node 24 and later, which strip types)
+  runs it. Write tests in one of
   the three, or change the script’s glob.
 - **A test glob that matches nothing passes.** A scaffold whose `test/` holds
   no matching file (a misnamed or moved one) runs `npm test` with 0 tests and
   exits 0. Check the test count in the output.
-- **A very deep `--dir` can leave a half-written scaffold.** When the
-  scaffold’s longest path passes the system’s path limit after some files are
-  written, the run exits 1 with the earlier files in place, and a re-run
+- **A very deep `--dir` can leave a half-written scaffold.** When a
+  scaffold path passes the system’s path limit, the run writes every file
+  whose path fits, fails the longer ones (the tool file and its test are the
+  longest, and a long name counts twice in them), and exits 1; a re-run
   refuses because the folder exists. Remove the folder and use a shorter
-  `--dir`.
-- **`--dir` accepts control characters other than line breaks.** A TAB or SOH
-  in the value makes a folder with it in its name; only CR, LF, U+2028,
+  `--dir` or name.
+- **`--dir` accepts control characters other than line breaks.** A control
+  character (TAB, SOH, DEL, a C1 control) or a bidi control inside the value
+  makes a folder with it in its name; only CR, LF, U+2028,
   U+2029 and U+0085 are refused. (`--author` refuses all of them.) Pass a
   path without them.
 - **The repo’s tealdeer check passes when tealdeer is not installed.** The
   test renders a scaffold’s card with `tldr` only when `tldr --version` says
   tealdeer, and otherwise counts as a pass with nothing checked. Read the
-  skeleton’s card with tealdeer yourself before a release.
+  skeleton’s card with tealdeer yourself before a release
+  (`node skeleton/tool.mjs --cheat > card.md && tldr --render card.md`).
 
 ## Requirements
 

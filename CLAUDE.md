@@ -384,7 +384,8 @@ when it is installed, tealdeer (`tldr --render` on a scaffold’s cheat card).
 None of them sees the real home: tealdeer runs with the scaffolder tests’
 isolated `HOME` and `XDG_CONFIG_HOME` and no `TEALDEER_*` variable, since it
 exits 1 on a `config.toml` it cannot read and a restyled one would change what
-it prints. The check is skipped unless `tldr --version` says tealdeer; another
+it prints. The check passes with nothing checked (a bare `if`, not `t.skip`,
+so the run shows `skipped 0`) unless `tldr --version` says tealdeer; another
 client of that name takes other flags. Give any program a new test spawns the
 same isolated environment.
 
