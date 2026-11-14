@@ -440,8 +440,9 @@ CLAUDE.md                     the agent-facing usage block, ready to keep
 LICENSE                       the skeleton’s own MIT notice, unchanged
 ```
 
-The new package’s `npm test` is `node --test "test/**/*.test.{mjs,js}"`: the test
-folder, by name, at any depth and as `.mjs` or `.js`. A bare `node --test` also runs every file its default
+The new package’s `npm test` is `node --test "test/**/*.{mjs,js,cjs}"`: every
+`.mjs`, `.js` or `.cjs` file in the test folder, at any depth and whatever its
+name, as a bare `node --test` runs them. A bare `node --test` also runs every file its default
 patterns match (`test.mjs`, `test-*.mjs`, `*-test.mjs`), which for a tool
 called `smoke-test` or `test-data` is the tool itself, run as a test and
 failing for want of a command. Run a scaffold’s suite with `npm test`.

@@ -18,9 +18,10 @@
   had its own tool file run as a test, which exits 2 for want of a command, so
   its `npm test` was red from the first run (79 tests, 1 failed, where
   `my-widget` ran 78 and passed). The script is now
-  `node --test "test/**/*.test.{mjs,js}"` in every scaffold (the test folder
-  at any depth, `.mjs` or `.js`, so a failing test in `test/sub/` still fails
-  `npm test`), and the generated README shows it and says why. One new test scaffolds those three names and counts
+  `node --test "test/**/*.{mjs,js,cjs}"` in every scaffold (every `.mjs`,
+  `.js` or `.cjs` file in the test folder, at any depth and whatever its name,
+  as a bare `node --test` ran them, so a failing `test/sub/x.test.mjs` or
+  `test/cli-test.mjs` still fails `npm test`), and the generated README shows it and says why. One new test scaffolds those three names and counts
   the test files that run; the test that runs a scaffold’s whole shipped suite
   now runs that script rather than a bare `node --test`. A tool scaffolded
   earlier under such a name takes the same one-line change to its

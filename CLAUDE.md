@@ -372,7 +372,7 @@ stdin — that is what the prompt-refusal test relies on), plus a few exported
 pure helpers. Temp dirs come from `mkdtempSync` and are removed in `finally`.
 The scaffolder test actually runs the generated tool (`--version`, a `--json`
 inspect) to prove the copy is runnable, and runs its whole shipped suite
-(the scaffold’s own `scripts.test`, `node --test "test/**/*.test.{mjs,js}"`, run
+(the scaffold’s own `scripts.test`, `node --test "test/**/*.{mjs,js,cjs}"`, run
 through `sh` in the scaffolded dir with `NODE_TEST_CONTEXT` removed from the
 env so it runs as a top-level suite; the script names the test folder because
 a bare `node --test` would also run a tool file called `test.mjs`,

@@ -267,7 +267,7 @@ test('usage errors exit 2', () => {
 test('--dir: an empty, blank or line-broken value is a usage error (exit 2, stdout empty, nothing written); a good one is trimmed', () => {
   const dir = tmp();
   try {
-    const bad = [['', /--dir must not be blank/], ['  ', /--dir must not be blank/], ['a\nb', /--dir must be one line/], ['a b', /--dir must be one line/]];
+    const bad = [['', /--dir must not be blank/], ['  ', /--dir must not be blank/], ['a\nb', /--dir must be one line/], ['a\u2028b', /--dir must be one line/]];
     for (const [value, message] of bad) {
       for (const args of [['ok-name', '--dir', value], ['ok-name', `--dir=${value}`]]) {
         const r = run([...args, '--author', 'Ada Lovelace <ada@example.org>'], { cwd: dir });
@@ -814,18 +814,21 @@ test('a scaffold’s test script runs its test folder and nothing else, whatever
   }
 });
 
-// Naming the folder must not narrow what runs in it: a failing test in a
-// subfolder of test/, or in a *.test.js file, has to turn `npm test` red.
-test('a scaffold’s test script finds tests in subfolders of test/ and in *.test.js files, and a failing one fails it', () => {
+// Naming the folder must not narrow what runs in it: a bare `node --test` ran
+// every .mjs, .js and .cjs file under test/, whatever its name, so a failing
+// test in any of them has to turn `npm test` red.
+test('a scaffold’s test script runs every .mjs, .js and .cjs file under test/, at any depth and whatever its name, and a failing one fails it', () => {
   const dir = tmp();
   try {
     assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
     const root = path.join(dir, 'my-widget');
-    const failing = "import { test } from 'node:test';\ntest('fails', () => { throw new Error('boom'); });\n";
-    for (const rel of ['test/sub/x.test.mjs', 'test/y.test.js']) {
+    const failingEsm = "import { test } from 'node:test';\ntest('fails', () => { throw new Error('boom'); });\n";
+    const failingCjs = "const { test } = require('node:test');\ntest('fails', () => { throw new Error('boom'); });\n";
+    const files = ['test/sub/x.test.mjs', 'test/y.test.js', 'test/cli-test.mjs', 'test/parse_test.mjs', 'test/integration.mjs', 'test/edge.test.cjs'];
+    for (const rel of files) {
       const file = path.join(root, rel);
       mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, failing);
+      writeFileSync(file, rel.endsWith('.cjs') ? failingCjs : failingEsm);
       const t = runTestScript(root);
       assert.notEqual(t.status, 0, `${rel}: a failing test there fails npm test\n${t.stdout}${t.stderr}`);
       assert.match(t.stdout, /^(#|ℹ) fail 1$/m, rel);
