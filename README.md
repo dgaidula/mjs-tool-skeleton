@@ -598,9 +598,10 @@ scaffolded tool. It locks the contract:
 - a **symlinked invocation still runs `main()`** — the entry guard in the fence.
 
 - `verdict()` returns one of the five verdicts for every combination of the
-  facts an item can hold, and each of the five is reachable: the runtime
-  counts no other value, so an item carrying one would be in no total and the
-  run would exit `0`. A special file (a device) warns under `inspect` and is
+  facts an item can hold (the placeholder one also reaches each of the five, a
+  check an adopter trims to its own verdicts): the runtime counts no other
+  value, so an item carrying one would be in no total and the run would exit
+  `0`. A special file (a device) warns under `inspect` and is
   skipped under `apply --go`; a symlink is read as what it points to.
 
 `test/new-tool.test.mjs` covers the scaffolder (the author sources run against

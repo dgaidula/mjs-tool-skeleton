@@ -45,7 +45,9 @@
   runtime revision, and not made here. What needs no fence lands now: a new
   test in `skeleton/tool.test.mjs` (which ships into every scaffold) drives
   `verdict()` with every combination of the placeholder facts and requires one
-  of the five each time, and each of the five to be reachable; `ADOPTING.md`
+  of the five each time, and a second test that the placeholder reaches each of
+  the five (an adopter whose `verdict()` never gives one trims it, and the
+  comment and `ADOPTING.md` say so); `ADOPTING.md`
   §3 and §6 tell an adopter to prove the same for its own `verdict()` and to
   check that the summary counts add up to `items.length`; `AGENT-USAGE.md`
   tells an agent that a line opening with any other word is a finding; and

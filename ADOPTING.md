@@ -329,7 +329,10 @@ by how worried a reader should be.
   reads all zeros, the run exits 0 and `next` says `done`. The fence does not
   catch it yet (open item 8), so the tool’s tests must: drive `verdict()` with
   every combination of the facts an item can hold and assert each result is
-  one of the five, as the skeleton’s suite does, and assert over each
+  one of the five, as the skeleton’s suite does (keep that test; the one
+  beside it, that the placeholder `verdict()` reaches each of the five, is
+  only about the placeholder: delete it or cut its list to the verdicts your
+  tool can give), and assert over each
   `--json` fixture run that the five summary counts add up to `items.length`.
 
 - **An advisory that was never a failure stays a `skip`.** A linter that
