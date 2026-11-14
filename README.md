@@ -597,13 +597,23 @@ scaffolded tool. It locks the contract:
 
 - a **symlinked invocation still runs `main()`** — the entry guard in the fence.
 
+- `verdict()` returns one of the five verdicts for every combination of the
+  facts an item can hold, and each of the five is reachable: the runtime
+  counts no other value, so an item carrying one would be in no total and the
+  run would exit `0`. A special file (a device) warns under `inspect` and is
+  skipped under `apply --go`; a symlink is read as what it points to.
+
 `test/new-tool.test.mjs` covers the scaffolder (the author sources run against
-a temporary home, with no real npm or git config in reach), and three repo-level checks:
+a temporary home, with no real npm or git config in reach; a bad `--dir` or an
+over-long name is exit `2` with nothing written; a scaffold’s `npm test` runs
+its test folder and nothing else, whatever the tool is called), and four
+repo-level checks:
 the runtime fence is byte-identical in `skeleton/tool.mjs` and
 `bin/new-tool.mjs`; the human layout and the summary lines
 are what is documented here, and the brief item lines follow the v3 rule, for
-the sample above; and a freshly scaffolded tool
-passes its own shipped suite with the same fence.
+the sample above; the number of `TODO(tool):` spots this README and a
+scaffold’s `CLAUDE.md` give is the number the template has; and a freshly
+scaffolded tool passes its own shipped suite with the same fence.
 
 ```sh
 npm test      # node --test — runs the skeleton suite and the scaffolder suite

@@ -67,6 +67,13 @@
   next run refused as existing. A name over 214 characters is now a usage
   error (exit 2, stdout empty, nothing written); 214 still scaffolds. The
   `usage errors` test holds both. The runtime fence is unchanged.
+- **The suite’s `tldr` check never reads the real home.** The scaffolder
+  suite rendered a scaffold’s cheat card with whatever `tldr` was on `PATH`,
+  in the outer environment. tealdeer exits 1 on a `config.toml` it cannot
+  read, so an unreadable or malformed `~/.config/tealdeer/config.toml` turned
+  the suite red. It now runs with the suite’s isolated `HOME` and
+  `XDG_CONFIG_HOME` and no `TEALDEER_*` variable, as npm and git do, and only
+  when `tldr --version` says tealdeer. Tests only.
 
 ## 0.5.0 — 2026-11-06
 
