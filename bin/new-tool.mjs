@@ -210,13 +210,15 @@ ${agentBlock}
 
 ## Filling in the tool
 
-Search \`${name}.mjs\` for \`TODO(tool):\` — those are the eleven spots where
-this tool’s real work goes: the cheat card (\`--cheat\`), the environment
-check, which targets need confirmation, the read-only \`inspect\` report, the
-\`apply\` mutation, which commands mutate, which of them may go on to \`--go\`
-unattended, the tool’s own override flags, its aliases of \`--go\`, the
-next-action policy, and the flags that take a value (\`requireValue()\`; the
-template’s \`--note\` is a placeholder to replace or remove).
+Search \`${name}.mjs\` for \`TODO(tool):\` — those are the fourteen spots
+where this tool’s real work goes, in file order: the header (it is the
+tool’s \`--help\`), the cheat card (\`--cheat\`), the facts \`verdict()\` reads,
+the environment check, which targets need confirmation, the read-only
+\`inspect\` report, the \`apply\` mutation, which commands mutate, which of them
+may go on to \`--go\` unattended, the tool’s own override flags, its aliases of
+\`--go\`, the next-action policy, the flags that take a value
+(\`requireValue()\`; the template’s \`--note\` is a placeholder to replace or
+remove), and the commands and flags \`main()\` parses and dispatches.
 Keep the \`report()\` / \`verdict()\` / \`nextAction()\` shape intact: rendering
 every mode from one set of item objects is what guarantees the human,
 \`--brief\`, and \`--json\` outputs can never disagree.

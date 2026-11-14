@@ -79,6 +79,10 @@
 //       or config is missing/unreadable) or an internal error (an uncaught
 //       exception, including advice that breaks the `next` safety rules).
 
+// TODO(tool): rewrite the header above. It is this tool's --help, printed as
+// written, and its spec: the usage lines, the commands, the flags and the
+// exit codes. Every line of it starts with `//`; a blank line ends the help.
+
 import { statSync, utimesSync } from 'node:fs';
 import { basename } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -126,6 +130,11 @@ const CHEAT = `# <tool>
 // here and every output mode changes with it.
 
 // Facts on an item -> its verdict. Pure: reads item fields, returns a string.
+// TODO(tool): replace the placeholder facts (error, kind, empty,
+// confirmDenied) with the ones your commands set. Every path returns one of
+// the five: the runtime counts no other value, so an item carrying one would
+// be in no total and the run would exit 0. The shipped test drives this
+// function with every combination of facts; keep its list in step.
 function verdict(item) {
   if (item.error) return 'fail';
   if (item.kind === 'missing') return 'refuse';
@@ -383,6 +392,10 @@ function requireValue(flag, value, { multiline = false } = {}) {
 
 // ---- CLI --------------------------------------------------------------------
 
+// TODO(tool): your commands and flags: the parseArgs options, the command
+// names, and what each command runs. Keep the order: --help, --version and
+// --cheat first, then the output mode, then every usage check (exit 2) and the
+// environment check (exit 3) before any work, and one report() at the end.
 async function main() {
   let parsed;
   try {

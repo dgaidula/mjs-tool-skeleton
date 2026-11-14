@@ -475,14 +475,17 @@ nothing written). The copied `LICENSE` is the one thing that keeps the
 skeleton’s copyright notice, because the MIT licence requires it to travel with
 the code; add your own line above it if you wish.
 
-Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the eleven
-spots: the cheat card (`CHEAT`, printed by `--cheat`), the environment check, which targets need confirmation, the `inspect`
-report, the `apply` mutation, which commands mutate (`MUTATING_COMMANDS`),
-which of them may go on to `--go` unattended (`AUTO_RUN_COMMANDS`), the
-tool’s own override flags (`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go`
-(`GO_ALIASES`), the next-action policy (`nextAction()`), and the flags that
-take a value (`requireValue()`, with `--note` as the placeholder). Leave the
-runtime fence alone.
+Then open `my-widget.mjs`, search for `TODO(tool):`, and fill in the fourteen
+spots, in file order: the header (it is the tool’s `--help`), the cheat card
+(`CHEAT`, printed by `--cheat`), the facts `verdict()` reads, the environment
+check, which targets need confirmation, the `inspect` report, the `apply`
+mutation, which commands mutate (`MUTATING_COMMANDS`), which of them may go on
+to `--go` unattended (`AUTO_RUN_COMMANDS`), the tool’s own override flags
+(`EXTRA_OVERRIDE_FLAGS`), its aliases of `--go` (`GO_ALIASES`), the
+next-action policy (`nextAction()`), the flags that take a value
+(`requireValue()`, with `--note` as the placeholder), and the commands and
+flags `main()` parses and dispatches. The search is the whole list: nothing
+tool-specific is left unmarked. Leave the runtime fence alone.
 
 **Flags that take a value.** The template carries `requireValue(flag, value, {
 multiline })` in the tool body, above the fence, so it is yours to keep and the

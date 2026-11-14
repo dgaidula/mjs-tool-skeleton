@@ -49,6 +49,17 @@
   check that the summary counts add up to `items.length`; `AGENT-USAGE.md`
   tells an agent that a line opening with any other word is a finding; and
   CLAUDE.md’s invariant 2 names the gap. The runtime fence is unchanged.
+- **A search for `TODO(tool):` is now the whole list.** The README and every
+  scaffold’s `CLAUDE.md` say to search the tool for `TODO(tool):` and fill in
+  the spots, but three tool-specific parts of the template carried no marker:
+  the header (which is the tool’s `--help`), `verdict()` (whose placeholder
+  facts every tool replaces) and `main()` (which hard-codes `inspect` and
+  `apply`). An author who filled in only the eleven marked spots would still
+  ship the template’s help text, verdict rules and command names. Each now has its own
+  marker (the header’s sits just below it, so `--help` does not print it), the
+  two documents say fourteen and list them in file order, and a new test
+  counts the markers in the template against the number both documents give.
+  Comments above the fence only; the runtime fence is unchanged.
 
 ## 0.5.0 — 2026-11-06
 

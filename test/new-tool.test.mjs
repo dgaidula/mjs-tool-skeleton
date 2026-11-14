@@ -112,6 +112,44 @@ test('name is substituted throughout; no <tool> placeholder survives', () => {
   }
 });
 
+// The README and a scaffold's CLAUDE.md both tell an author how many
+// `TODO(tool):` spots a search will find. The count drifted from the template
+// once (0.4.1's release gate), and three tool-specific spots (the header,
+// verdict() and main()) once carried no marker at all, so the search was not
+// the whole list.
+test('the README and a scaffold’s CLAUDE.md count the TODO(tool): spots the template really has, and the header, verdict() and main() are among them', () => {
+  const dir = tmp();
+  try {
+    const template = readFileSync(SKELETON, 'utf8');
+    const spots = template.split('TODO(tool):').length - 1;
+    const word = { 11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen', 15: 'fifteen', 16: 'sixteen' }[spots];
+    assert.ok(word, `no number word for ${spots} spots: add one here`);
+    const readme = readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
+    assert.match(readme, new RegExp(`search for \`TODO\\(tool\\):\`, and fill in the ${word}\\s+spots`));
+    assert.equal(run(['my-widget', '--dir', dir, '--quiet']).status, 0);
+    const root = path.join(dir, 'my-widget');
+    const claude = readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
+    assert.match(claude, new RegExp(`those are the ${word}\\s+spots`));
+    assert.equal(readFileSync(path.join(root, 'my-widget.mjs'), 'utf8').split('TODO(tool):').length - 1, spots);
+    // each marker sits in the comment directly above the thing it marks
+    const above = (anchor) => {
+      const lines = template.slice(0, template.indexOf(anchor)).trimEnd().split('\n');
+      const comment = [];
+      for (let i = lines.length - 1; i >= 0 && lines[i].startsWith('//'); i -= 1) comment.push(lines[i]);
+      return comment.join('\n');
+    };
+    for (const anchor of ["\nimport { statSync, utimesSync } from 'node:fs';", '\nfunction verdict(item) {', '\nasync function main() {']) {
+      assert.ok(template.includes(anchor), `anchor not found: ${anchor.trim()}`);
+      assert.match(above(anchor), /TODO\(tool\):/, `no TODO(tool): above ${anchor.trim()}`);
+    }
+    // and the header's own marker is outside the header, so --help never prints it
+    const help = spawnSync('node', [SKELETON, '--help'], { encoding: 'utf8' }).stdout;
+    assert.doesNotMatch(help, /TODO\(tool\):/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the generated tool runs and reports under its own name', () => {
   const dir = tmp();
   try {
