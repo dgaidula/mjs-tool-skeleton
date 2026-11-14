@@ -421,6 +421,8 @@ npx mjs-tool-skeleton my-widget
 node bin/new-tool.mjs my-widget --author "Ada Lovelace <ada@example.org>"
 ```
 
+The name is a lowercase package name: a letter, then letters, digits or
+hyphens, at most npm’s 214 characters; anything else is a usage error.
 `--dir` is where the `my-widget/` folder goes (default: the current
 directory). Like any flag that takes a value it runs through `requireValue()`:
 an empty, blank or line-broken `--dir` is a usage error (exit `2`, nothing

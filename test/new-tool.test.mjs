@@ -238,6 +238,16 @@ test('usage errors exit 2', () => {
     const bad = run(['Bad_Name', '--dir', dir]);
     assert.equal(bad.status, 2);
     assert.match(bad.stderr, /invalid name/);
+    // npm's 214-character limit: the longest name scaffolds, one more is refused before any work
+    const long = run(['a'.repeat(215), '--dir', dir]);
+    assert.equal(long.status, 2);
+    assert.equal(long.stdout, '');
+    assert.match(long.stderr, /^error: name is 215 characters long \(a package name is at most 214\)$/m);
+    assert.deepEqual(readdirSync(dir), []);
+    const longest = run(['a'.repeat(214), '--dir', dir, '--quiet']);
+    assert.equal(longest.status, 0, longest.stderr);
+    assert.match(longest.stdout, /^summary: ok=6 warn=0 skip=0 refuse=0 fail=0$/m);
+    rmSync(path.join(dir, 'a'.repeat(214)), { recursive: true, force: true });
     const unknown = run(['ok-name', '--dir', dir, '--nope']);
     assert.equal(unknown.status, 2);
     assert.match(unknown.stderr, /--help/);

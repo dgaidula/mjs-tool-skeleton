@@ -20,9 +20,10 @@
 //   new-tool --help | --version | --cheat
 //
 // <name> must be a lowercase package name: a letter, then letters, digits, or
-// hyphens (e.g. my-widget). --dir is where the <name>/ folder is created
-// (default: the current directory); an empty, blank or line-broken --dir is a
-// usage error, never a silent fall back to the current directory.
+// hyphens (e.g. my-widget), at most 214 characters, which is npm's limit.
+// --dir is where the <name>/ folder is created (default: the current
+// directory); an empty, blank or line-broken --dir is a usage error, never a
+// silent fall back to the current directory.
 //
 // The author written into the new tool's package.json and README licence line
 // is yours, never the skeleton's. It comes from, in order:
@@ -72,6 +73,10 @@ import { parseArgs, promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/;
+// npm's limit on a package name. Past it the scaffold could never be
+// published, and near 250 the test file's name outgrows a 255-byte filename
+// limit, which used to leave a half-written folder behind.
+const NAME_MAX = 214;
 
 // The cheat card (printed by --cheat): a tldr page, in the shape the skeleton's
 // CHEAT comment spells out (skeleton/tool.mjs). A backtick is escaped.
@@ -430,6 +435,9 @@ async function main() {
   if (positionals.length > 1) usageError(`unexpected extra argument \`${positionals[1]}\` (expected one <name>)`);
   if (!NAME_RE.test(name)) {
     usageError(`invalid name \`${name}\` (use a lowercase letter, then letters/digits/hyphens, e.g. my-widget)`);
+  }
+  if (name.length > NAME_MAX) {
+    usageError(`name is ${name.length} characters long (a package name is at most ${NAME_MAX})`);
   }
 
   // Check each flag's value before any work. An empty --dir used to mean the

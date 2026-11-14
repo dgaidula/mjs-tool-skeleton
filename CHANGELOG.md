@@ -60,6 +60,13 @@
   two documents say fourteen and list them in file order, and a new test
   counts the markers in the template against the number both documents give.
   Comments above the fence only; the runtime fence is unchanged.
+- **`new-tool` refuses a name longer than npm’s 214 characters.** A name of
+  215 to about 245 characters scaffolded a package npm would never accept,
+  and at 250 the test file’s name outgrew a 255-byte filename limit after the
+  folder and five files were written, leaving a half-made scaffold that the
+  next run refused as existing. A name over 214 characters is now a usage
+  error (exit 2, stdout empty, nothing written); 214 still scaffolds. The
+  `usage errors` test holds both. The runtime fence is unchanged.
 
 ## 0.5.0 — 2026-11-06
 
