@@ -33,6 +33,22 @@
   `skeleton/tool.test.mjs` (which ships into every scaffold) holds `inspect`
   warning and `apply --go` skipping on `/dev/null`, and the two link cases.
   Placeholder code above the fence; the runtime fence is unchanged.
+- **A verdict outside the five reads as a clean run: recorded, and guarded
+  above the fence for now.** `report()` handed an item whose verdict is
+  `'failed'`, `'error'`, `'FAIL'`, `undefined` or `null` prints the line,
+  counts it in no total, exits 0 and advises `done` (`read-only: nothing to
+  apply`, `dry run: nothing would change`, `applied: 0 changed`). The fix is a
+  fence change (`report()` refusing such an item with exit 3, as it refuses an
+  unsafe `next`), which moves the sha256 every adopted tool pins, so it is
+  queued as `ADOPTING.md` open item 8, as the reason to schedule the next
+  runtime revision, and not made here. What needs no fence lands now: a new
+  test in `skeleton/tool.test.mjs` (which ships into every scaffold) drives
+  `verdict()` with every combination of the placeholder facts and requires one
+  of the five each time, and each of the five to be reachable; `ADOPTING.md`
+  §3 and §6 tell an adopter to prove the same for its own `verdict()` and to
+  check that the summary counts add up to `items.length`; `AGENT-USAGE.md`
+  tells an agent that a line opening with any other word is a finding; and
+  CLAUDE.md’s invariant 2 names the gap. The runtime fence is unchanged.
 
 ## 0.5.0 — 2026-11-06
 

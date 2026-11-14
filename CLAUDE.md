@@ -39,7 +39,12 @@ public shape, not a copy of that code. The current contract is `mjs-tool/3`.
    the tool’s `verdict(item)`; their symbols live in the fence’s `GLYPH` map. A
    command function sets facts on an item and calls `verdict(item)` — it never
    hardcodes a verdict string except for outcomes that aren’t fact-derived
-   (e.g. the scaffolder’s “created”/“refuse”).
+   (e.g. the scaffolder’s “created”/“refuse”). The fence does not check the
+   value: an item whose verdict is not one of the five is counted nowhere, and
+   the run exits 0 with `next: done` (found 2026-11-14; ADOPTING open item 8,
+   the reason to schedule the next fence revision). Until that revision the
+   skeleton’s shipped test drives `verdict()` with every combination of
+   facts; keep it true when the placeholder facts change.
 
 3. **A non-`ok` line is never collapsed or dropped.** `--brief` prints one line
    per item and shows the parenthesised reason for every non-`ok` verdict.

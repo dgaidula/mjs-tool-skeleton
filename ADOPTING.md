@@ -320,6 +320,18 @@ by how worried a reader should be.
   `verdict()` built from facts, like the skeleton’s, meets this when every
   combination of facts has an explicit branch.
 
+- **A verdict outside the five reads as a clean run, so prove in a test that
+  no item can carry one.** The runtime counts `ok`, `warn`, `skip`, `refuse`
+  and `fail` and nothing else. An item whose verdict is misspelled (`failed`,
+  `error`, `FAIL`) or was never set (a `verdict()` that fell through and
+  returned `undefined`, an item built on a path that forgot to call it) is in
+  no total and does not raise the exit code: the line prints, the summary
+  reads all zeros, the run exits 0 and `next` says `done`. The fence does not
+  catch it yet (open item 8), so the tool’s tests must: drive `verdict()` with
+  every combination of the facts an item can hold and assert each result is
+  one of the five, as the skeleton’s suite does, and assert over each
+  `--json` fixture run that the five summary counts add up to `items.length`.
+
 - **An advisory that was never a failure stays a `skip`.** A linter that
   surfaced a prior review’s verdict “for information” made every run exit 1
   once that line became a `warn`, and an agent could never reach clean.
@@ -575,6 +587,11 @@ gates:
 - **Each verdict needs a fixture where it is the only finding.** A test that
   expects exit 1 from a fixture with several kinds of drift stays green when
   one verdict is mapped to `ok` by mistake.
+
+- **Every item carries one of the five verdicts, and a test says so** (§3):
+  `verdict()` driven with every combination of facts, and the summary counts
+  of each `--json` fixture run adding up to `items.length`. An item outside
+  the five is counted nowhere and the run exits 0.
 
 - **A dry run that predicts writes is checked against the real writes.** Plan
   in memory, but keep `--go` on its own write path, so the dry run is an
@@ -1169,3 +1186,35 @@ until it re-syncs.
      call. Caveats: a `--json | head` read (6 of 167 piped `--json` calls
      in a sample week) would get one long line, and any test that pins
      pretty-printed JSON bytes goes red.
+
+8. **An item whose verdict is not one of the five reads as a clean run.**
+   Found 2026-11-14 on the 0.5.0 runtime (`6e8cd8a1…`), by handing `report()`
+   one item with each of `undefined`, `null`, `'error'`, `'failed'` and
+   `'FAIL'` as its verdict. In every case `summarize()` counted the item
+   nowhere, `exitCodeFor()` gave 0, and `--brief` printed the line with the
+   stray word in the verdict’s place, then
+   `summary: ok=0 warn=0 skip=0 refuse=0 fail=0` and
+   `next: done  (read-only: nothing to apply)`; by the same arithmetic a dry
+   run of such items ends `done  (dry run: nothing would change)`. So a
+   tool-side slip (a misspelling, a `verdict()` that falls through, an item
+   built without it) turns a failure into exit 0 with a summary that
+   `AGENT-USAGE.md` tells an agent to read as clean. Invariant 3’s promise
+   that a non-`ok` line survives every mode holds for the line and not for
+   the count, the exit code or `next`.
+
+   The fix belongs in the fence, where rule 2 and rule 4 of `next` are
+   already enforced and not just documented: `report()` throws on such an
+   item before it writes a byte, so the run exits 3 with the item named on
+   stderr, and `summarize()` tests for an own key (`'toString' in s` is true
+   today). It needs no new top-level name, and it leaves the `--brief` lines,
+   the `--json` keys and every exit code of a conformant tool alone, so it is
+   a runtime revision and not a new contract. Unlike items 1, 4 and 7 it is
+   not cosmetic: it is a reason to schedule the next revision, and items 1, 4
+   and 7 ride along with it (item 6). Before that release, scan every adopted
+   tool for a verdict string outside the five: a tool that leans on one would
+   exit 3 from its first run after the re-sync.
+
+   Until then the check lives above the fence, in each tool’s tests (§3, §6):
+   the skeleton’s shipped suite drives `verdict()` with every combination of
+   facts, and the agent block says a line that opens with any other word is a
+   finding.

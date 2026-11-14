@@ -134,6 +134,33 @@ test('a special file (a device): inspect warns, apply skips it even under --go; 
   }
 });
 
+// The runtime counts the five verdicts and nothing else: an item that carries
+// any other value (a misspelling such as 'failed', a verdict() that fell
+// through and returned undefined) is in no total and does not raise the exit
+// code, so the run reads as clean. verdict() is the one place that can happen,
+// so it is driven here with every combination of the facts the commands set.
+// When you rewrite verdict() for your tool, list your own facts here.
+test('verdict() returns one of the five verdicts for every combination of facts an item can hold, and each of the five is reachable', async () => {
+  const { verdict } = await import(TOOL_URL.href);
+  const VERDICTS = ['fail', 'ok', 'refuse', 'skip', 'warn'];
+  const facts = {
+    command: ['inspect', 'apply'],
+    kind: [undefined, 'file', 'directory', 'other', 'missing'],
+    empty: [undefined, false, true],
+    confirmDenied: [undefined, true],
+    error: [undefined, 'EACCES: permission denied'],
+  };
+  let items = [{}];
+  for (const [fact, values] of Object.entries(facts)) {
+    items = items.flatMap((item) => values.map((value) => ({ ...item, [fact]: value })));
+  }
+  assert.equal(items.length, 2 * 5 * 3 * 2 * 2);
+  for (const item of items) {
+    assert.ok(VERDICTS.includes(verdict(item)), `verdict() gave ${JSON.stringify(verdict(item))} for ${JSON.stringify(item)}`);
+  }
+  assert.deepEqual([...new Set(items.map(verdict))].sort(), VERDICTS);
+});
+
 test('exit codes: 0 ok, 1 partial, 2 usage', () => {
   const dir = tmp();
   try {
