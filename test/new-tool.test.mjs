@@ -824,7 +824,7 @@ test('a scaffold’s test script runs every .mjs, .js and .cjs file under test/,
     const root = path.join(dir, 'my-widget');
     const failingEsm = "import { test } from 'node:test';\ntest('fails', () => { throw new Error('boom'); });\n";
     const failingCjs = "const { test } = require('node:test');\ntest('fails', () => { throw new Error('boom'); });\n";
-    const files = ['test/sub/x.test.mjs', 'test/y.test.js', 'test/cli-test.mjs', 'test/parse_test.mjs', 'test/integration.mjs', 'test/edge.test.cjs'];
+    const files = ['test/sub/x.test.mjs', 'test/y.test.js', 'test/cli-test.mjs', 'test/parse_test.mjs', 'test/test-flags.mjs', 'test/integration.mjs', 'test/edge.test.cjs'];
     for (const rel of files) {
       const file = path.join(root, rel);
       mkdirSync(path.dirname(file), { recursive: true });

@@ -291,8 +291,8 @@ line-broken value (CR, LF, U+2028, U+2029 or U+0085) calls the fence’s
 `usageError()`; otherwise the trimmed value
 returns. It is called from `main()`, never at module top level (invariant 8: a
 top-level use of a fence name exits 1 before the fence runs). The template’s
-`apply --note <text>` is its worked use, and the scaffolder’s `--author` runs
-through it.
+`apply --note <text>` is its worked use, and the scaffolder’s `--author` and
+`--dir` run through it.
 
 ## The author on a scaffold
 
