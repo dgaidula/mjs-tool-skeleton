@@ -213,6 +213,37 @@ test('usage errors exit 2', () => {
   }
 });
 
+// --dir runs through requireValue() like any flag that takes a value. Before it
+// did, an empty --dir scaffolded into the current directory without a word, and
+// a blank or line-broken one created a folder of that name.
+test('--dir: an empty, blank or line-broken value is a usage error (exit 2, stdout empty, nothing written); a good one is trimmed', () => {
+  const dir = tmp();
+  try {
+    const bad = [['', /--dir must not be blank/], ['  ', /--dir must not be blank/], ['a\nb', /--dir must be one line/], ['a b', /--dir must be one line/]];
+    for (const [value, message] of bad) {
+      for (const args of [['ok-name', '--dir', value], ['ok-name', `--dir=${value}`]]) {
+        const r = run([...args, '--author', 'Ada Lovelace <ada@example.org>'], { cwd: dir });
+        assert.equal(r.status, 2, JSON.stringify(args));
+        assert.equal(r.stdout, '', JSON.stringify(args));
+        assert.match(r.stderr, message, JSON.stringify(args));
+        assert.deepEqual(readdirSync(dir), [], `nothing is written for ${JSON.stringify(args)}`);
+      }
+    }
+    // a flag with no value at all is parseArgs' own usage error
+    const missing = run(['ok-name', '--dir'], { cwd: dir });
+    assert.equal(missing.status, 2);
+    assert.equal(missing.stdout, '');
+    assert.deepEqual(readdirSync(dir), []);
+    // a relative --dir resolves against the current directory, spaces around it trimmed
+    const good = run(['ok-name', '--dir', ' sub ', '--quiet', '--author', 'Ada Lovelace <ada@example.org>'], { cwd: dir });
+    assert.equal(good.status, 0, good.stderr);
+    assert.deepEqual(readdirSync(dir), ['sub']);
+    assert.ok(existsSync(path.join(dir, 'sub', 'ok-name', 'ok-name.mjs')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---- the author (D583): the flag, else npm, else git, else a placeholder --------------------
 
 // Scaffold `my-widget` with the given config and return what a user would see.

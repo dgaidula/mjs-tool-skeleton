@@ -421,6 +421,12 @@ npx mjs-tool-skeleton my-widget
 node bin/new-tool.mjs my-widget --author "Ada Lovelace <ada@example.org>"
 ```
 
+`--dir` is where the `my-widget/` folder goes (default: the current
+directory). Like any flag that takes a value it runs through `requireValue()`:
+an empty, blank or line-broken `--dir` is a usage error (exit `2`, nothing
+written), never a silent fall back to the current directory, and spaces around
+the value are trimmed.
+
 It creates `<dir>/my-widget/` containing:
 
 ```

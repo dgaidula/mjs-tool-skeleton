@@ -21,7 +21,8 @@
 //
 // <name> must be a lowercase package name: a letter, then letters, digits, or
 // hyphens (e.g. my-widget). --dir is where the <name>/ folder is created
-// (default: the current directory).
+// (default: the current directory); an empty, blank or line-broken --dir is a
+// usage error, never a silent fall back to the current directory.
 //
 // The author written into the new tool's package.json and README licence line
 // is yours, never the skeleton's. It comes from, in order:
@@ -53,8 +54,8 @@
 // Exit codes:
 //   0   scaffolded ok.
 //   1   refused (the target directory already exists) or a write failed.
-//   2   usage error (missing/invalid name, a bad --author, unknown flag, bad
-//       mode combo).
+//   2   usage error (missing/invalid name, a bad --dir or --author, unknown
+//       flag, bad mode combo).
 //   3   could not run to completion (the skeleton templates could not be
 //       read, or an internal error).
 
@@ -417,7 +418,11 @@ async function main() {
     usageError(`invalid name \`${name}\` (use a lowercase letter, then letters/digits/hyphens, e.g. my-widget)`);
   }
 
-  // Check the author flag before any work; the lookups wait until the target is known to be free.
+  // Check each flag's value before any work. An empty --dir used to mean the
+  // current directory without a word, and a blank or line-broken one became a
+  // folder of that name. The author lookups wait until the target is known to
+  // be free.
+  const dirFlag = values.dir === undefined ? null : requireValue('--dir', values.dir);
   const fromFlag = values.author === undefined ? null : authorFromFlag(values.author);
 
   // Load the templates that ship with this package.
@@ -436,7 +441,7 @@ async function main() {
     environmentError(`cannot read the skeleton templates (${e.message})`);
   }
 
-  const baseDir = values.dir ? resolve(values.dir) : process.cwd();
+  const baseDir = dirFlag === null ? process.cwd() : resolve(dirFlag);
   const dest = join(baseDir, name);
   const rel = (p) => relative(process.cwd(), p) || '.';
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **`new-tool --dir` is checked like any flag that takes a value.** `--dir ""`
+  (an unset shell variable, say: `--dir "$PROJECTS"`) scaffolded into the
+  current directory without a word, `--dir "  "` created a folder named two
+  spaces, and a value holding a line break created a folder with one in its
+  name. `--dir` now runs through `requireValue()`, as the template tells every
+  tool to do with its own flags: an empty, blank or line-broken value is a
+  usage error naming the flag (exit 2, stdout empty, nothing written), and
+  spaces around a good value are trimmed. One new test. The scaffolder’s
+  `--help` and the README say so. The runtime fence is unchanged.
+
 ## 0.5.0 — 2026-11-06
 
 A revision of the `mjs-tool/3` runtime, not a new contract. The marker stays
