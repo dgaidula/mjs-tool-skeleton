@@ -11,6 +11,19 @@
   usage error naming the flag (exit 2, stdout empty, nothing written), and
   spaces around a good value are trimmed. One new test. The scaffolder’s
   `--help` and the README say so. The runtime fence is unchanged.
+- **A scaffold’s `npm test` runs its test folder, whatever the tool is
+  called.** The generated `package.json` said `node --test`, whose default
+  patterns match `test.mjs`, `test-*.mjs` and `*-test.mjs` anywhere in the
+  package. A tool scaffolded as `smoke-test`, `test-data` or `test` therefore
+  had its own tool file run as a test, which exits 2 for want of a command, so
+  its `npm test` was red from the first run (79 tests, 1 failed, where
+  `my-widget` ran 78 and passed). The script is now
+  `node --test "test/*.test.mjs"` in every scaffold, and the generated README
+  shows it and says why. One new test scaffolds those three names and counts
+  the test files that run; the test that runs a scaffold’s whole shipped suite
+  now runs that script rather than a bare `node --test`. A tool scaffolded
+  earlier under such a name takes the same one-line change to its
+  `package.json`. The runtime fence is unchanged.
 
 ## 0.5.0 — 2026-11-06
 

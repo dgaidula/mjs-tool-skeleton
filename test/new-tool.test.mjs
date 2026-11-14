@@ -723,11 +723,44 @@ test('a scaffolded tool passes its own shipped tests (from a path with a space) 
     assert.equal(run(['my-widget', '--dir', spaced, '--quiet']).status, 0);
     const root = path.join(spaced, 'my-widget');
     assert.equal(fenceOf(path.join(root, 'my-widget.mjs')), fenceOf(SKELETON));
-    const env = { ...process.env };
-    delete env.NODE_TEST_CONTEXT; // run it as its own top-level suite, not as our child
-    const t = spawnSync('node', ['--test'], { cwd: root, env, encoding: 'utf8', timeout: 120000 });
+    const t = runTestScript(root, 120000); // what `npm test` runs there
     assert.equal(t.status, 0, t.stdout + t.stderr);
     assert.match(t.stdout, /# fail 0|ℹ fail 0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A scaffold's own `scripts.test`, run as npm would run it (through sh, from
+// the package root), as a top-level suite and not as this one's child.
+function runTestScript(root, timeout = 60000) {
+  const { scripts } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return spawnSync('sh', ['-c', scripts.test], { cwd: root, env, encoding: 'utf8', timeout });
+}
+
+// A bare `node --test` runs every file its default patterns match, and those
+// include test.mjs, test-*.mjs and *-test.mjs: the tool file itself, for a tool
+// named that way. It then ran as a "test", exited 2 for want of a command, and
+// a fresh scaffold's `npm test` was red (smoke-test, test-data, test). The
+// shipped suite is swapped for a one-test file here, so the count says exactly
+// which files ran.
+test('a scaffold’s test script runs its test folder and nothing else, whatever the tool is called (test, test-data, smoke-test)', () => {
+  const dir = tmp();
+  try {
+    for (const name of ['test', 'test-data', 'smoke-test', 'my-widget']) {
+      assert.equal(run([name, '--dir', dir, '--quiet']).status, 0, name);
+      const root = path.join(dir, name);
+      const { scripts } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+      assert.ok(readFileSync(path.join(root, 'README.md'), 'utf8').includes(`npm test      # ${scripts.test}\n`), `${name}: the README shows the script`);
+      assert.ok(existsSync(path.join(root, 'test', `${name}.test.mjs`)), `${name}: the shipped suite is where the script looks`);
+      writeFileSync(path.join(root, 'test', `${name}.test.mjs`), "import { test } from 'node:test';\ntest('the only test', () => {});\n");
+      const t = runTestScript(root);
+      assert.equal(t.status, 0, `${name}: ${t.stdout}${t.stderr}`);
+      assert.match(t.stdout, /^(#|ℹ) tests 1$/m, `${name}: one test file ran, not the tool as well`);
+      assert.match(t.stdout, /^(#|ℹ) fail 0$/m, name);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

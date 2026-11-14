@@ -438,6 +438,12 @@ CLAUDE.md                     the agent-facing usage block, ready to keep
 LICENSE                       the skeleton’s own MIT notice, unchanged
 ```
 
+The new package’s `npm test` is `node --test "test/*.test.mjs"`: the test
+folder, by name. A bare `node --test` also runs every file its default
+patterns match (`test.mjs`, `test-*.mjs`, `*-test.mjs`), which for a tool
+called `smoke-test` or `test-data` is the tool itself, run as a test and
+failing for want of a command. Run a scaffold’s suite with `npm test`.
+
 **Whose name goes on a scaffold.** The `author` in the new `package.json` and
 the name on the README’s `MIT ©` line are yours, never the skeleton’s. They
 come from, in order:
